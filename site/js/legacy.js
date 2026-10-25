@@ -51,7 +51,7 @@ window.Legacy = {
         option: {
           ...base(),
           legend: { ...base().legend, data: [name, 'League average'] },
-          grid: { ...base().grid, right: 16 },
+          grid: { ...base().grid, top: 52, right: 16 },  // room for a two-row legend
           tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: TOK('--axis') } },
             formatter: (ps) => { const w = W[ps[0].dataIndex];
               return `<b>${this.wk(w.mp)}</b> <span style="color:${TOK('--muted')}">${this.wkDates(w.mp)}${w.playoff ? ' · Playoffs' : ''}</span>`

@@ -171,7 +171,7 @@
         <a :href="'#/league/' + v.id" class="week-chip" :class="page === v.id && 'active'" x-text="v.label"></a>
       </template>
     </div>
-    <div x-show="(section === 'league' || section === 'teams') && !hasData" class="card text-sm text-ink2">
+    <div x-show="section === 'league' && !hasData" class="card text-sm text-ink2">
       No completed regular-season matchups yet for <b x-text="fmt.seasonLabel(season)"></b>. Pick an earlier season, or check back after week 1.
     </div>
 
@@ -492,6 +492,177 @@
       </template>
 
       <div class="card text-sm text-ink2" x-show="!h2hLive && !h2hPast">That matchup isn't available.</div>
+    </section>
+
+    <!-- ============ TEAMS ============ -->
+    <section x-show="page === 'teams'" class="space-y-4">
+      <div>
+        <div class="label" x-text="fmt.seasonLabel(season)"></div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5">Teams</h1>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <template x-for="t in teamCards" :key="t.team_id">
+          <a class="game" :href="teamHref(t.owner_id)">
+            <div class="flex items-center gap-3">
+              <img class="logo w-12 h-12" :src="logoOf(t.team_id)" :style="`--ring: ${colorOf(t.owner_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(t.team_id)">
+              <div class="min-w-0">
+                <div class="font-bold truncate" x-text="t.name"></div>
+                <div class="text-xs text-muted truncate" x-show="owner(t.owner_id) !== t.name" x-text="owner(t.owner_id)"></div>
+              </div>
+            </div>
+            <div class="flex items-end justify-between mt-3">
+              <div>
+                <div class="score !text-[26px]" x-text="fmt.rec(t)"></div>
+                <div class="stat mt-1"><span x-show="t.champion">🏆 Champion</span><span x-show="!t.champion && t.rank_final" x-text="`Finished ${fmt.ord(t.rank_final)}`"></span><span x-show="!t.rank_final && t.seed" x-text="`Seed ${t.seed}`"></span></div>
+              </div>
+              <svg x-show="t.spark" viewBox="0 0 100 28" class="w-24 h-8" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="14" x2="100" y2="14" stroke="var(--grid)" stroke-width="1"/>
+                <polyline :points="t.spark?.pts" fill="none" :stroke="colorOf(t.owner_id)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+              </svg>
+            </div>
+          </a>
+        </template>
+      </div>
+      <div class="text-[11.5px] text-muted">Line = weekly score vs. the league average (above the middle line = beat it).</div>
+    </section>
+
+    <!-- ============ TEAM PAGE ============ -->
+    <section x-show="page === 'team'" class="space-y-4">
+      <a href="#/teams" class="inline-flex items-center gap-1.5 text-sm text-ink2 hover:text-ink">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>Teams
+      </a>
+      <div class="card text-sm text-ink2" x-show="!T">This franchise didn't play in <span x-text="fmt.seasonLabel(season)"></span>. Pick another season.</div>
+
+      <template x-if="T">
+      <div class="space-y-4">
+        <div class="card !p-5 flex flex-wrap items-center gap-4">
+          <img class="logo w-16 h-16 md:w-20 md:h-20" :src="logoOf(T.team_id)" :style="`--ring: ${colorOf(T.owner_id)}`" alt="" @error="$el.src = avatarOf(T.team_id)">
+          <div class="min-w-0 flex-1">
+            <div class="label" x-text="fmt.seasonLabel(season) + (owner(T.owner_id) !== T.name ? ` · ${owner(T.owner_id)}` : '')"></div>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight truncate" x-text="T.name"></h1>
+            <div class="flex flex-wrap gap-1.5 mt-1.5">
+              <span class="tag !bg-transparent !px-0 !text-[13px] !text-ink font-bold" x-text="fmt.rec(T)"></span>
+              <span class="tag" x-show="T.champion">🏆 Champion</span>
+              <span class="tag" x-show="!T.champion && T.rank_final" x-text="`Finished ${fmt.ord(T.rank_final)}`"></span>
+              <span class="tag" x-show="T.seed" x-text="`Seed ${T.seed}`"></span>
+              <span class="tag" x-text="`${fmt.n(T.pf)} PF`"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <template x-for="r in teamRanks" :key="r.key">
+            <div class="card !py-3 !px-4">
+              <div class="flex items-center justify-between gap-1">
+                <span class="label truncate" x-text="r.label"></span>
+                <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" :aria-label="`About ${r.label}`">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="r.info"></span></span>
+              </div>
+              <div class="text-[22px] font-extrabold tracking-tight mt-1" x-text="r.fmt(r.value)"></div>
+              <div class="text-[12px] font-semibold mt-0.5" :class="rankClass(r)" x-text="`#${r.rank} of ${r.of}`"></div>
+            </div>
+          </template>
+        </div>
+
+        <a x-show="teamLive" class="game flex items-center gap-3" :href="teamLive ? matchupHref(teamLive.matchup_id, live.mp) : '#'">
+          <span class="pill-live shrink-0"><span class="live-dot"></span>LIVE</span>
+          <template x-for="s in teamLive ? [teamLive.home, teamLive.away] : []" :key="s.team_id">
+            <div class="flex items-center gap-2 min-w-0 flex-1" :class="s.team_id !== T.team_id && 'justify-end flex-row-reverse text-right'">
+              <img class="logo w-8 h-8" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+              <div class="min-w-0"><div class="text-sm font-semibold truncate" x-text="s.name"></div><div class="stat" x-text="fmt.pct(s.win_prob, 0) + ' to win'"></div></div>
+              <div class="score !text-[22px]" x-text="fmt.n(s.pts)"></div>
+            </div>
+          </template>
+        </a>
+
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="card" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3>Weekly scores</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-64" x-chart="scoresChart()"></div>
+            <div x-show="tv" x-html="tableHtml(scoresChart())"></div>
+          </div>
+          <div class="card" x-data="{ tv: false }" x-show="T.e0 != null">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3 class="flex items-center gap-1.5">Season breakdown <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.breakdown"></span></span></h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-64" x-chart="seasonWaterfall()"></div>
+            <div x-show="tv" x-html="tableHtml(seasonWaterfall())"></div>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-5 gap-4">
+          <div class="card lg:col-span-3">
+            <h3 class="mb-2">Game log</h3>
+            <div class="max-h-[520px] overflow-y-auto -mx-1 px-1">
+              <template x-for="g in gameLog" :key="g.mp">
+                <a :href="matchupHref(g.matchup_id, g.mp)" class="flex items-center gap-3 py-2 border-t hover:bg-[var(--wash)] rounded-lg px-1" style="border-color: var(--grid)">
+                  <span class="w-9 text-xs text-muted shrink-0" x-text="(g.playoff ? 'P' : 'Wk ') + g.mp"></span>
+                  <span class="w-6 text-center text-[12px] font-extrabold shrink-0" :class="g.result === 'W' ? 'up' : 'down'" x-text="g.result"></span>
+                  <img class="logo w-7 h-7" :src="logoOf(g.opp_id)" :style="`--ring: ${teamColor(g.opp_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(g.opp_id)">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium truncate" x-text="'vs ' + tname(g.opp_id)"></div>
+                    <div class="flex flex-wrap gap-1 mt-0.5" x-show="g.tags.length"><template x-for="t in g.tags" :key="t.key"><span class="tag !text-[10px] !py-0" x-text="t.label"></span></template></div>
+                  </div>
+                  <span class="text-sm num font-semibold shrink-0" x-text="`${fmt.n(g.pts)}–${fmt.n(g.opp_pts)}`"></span>
+                </a>
+              </template>
+            </div>
+          </div>
+          <div class="card lg:col-span-2">
+            <h3>Who scored for them</h3>
+            <div class="sub mb-2">Points in games that counted this season (3+ games).</div>
+            <div class="max-h-[520px] overflow-y-auto">
+              <div class="flex items-center gap-2 pb-1 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
+                <span class="flex-1">Player</span><span class="w-8 text-right">G</span><span class="w-12 text-right">Pts</span><span class="w-12 text-right">Brkout</span><span class="w-12 text-right">Hot</span>
+              </div>
+              <template x-for="p in teamPlayers" :key="p.player_id">
+                <div class="flex items-center gap-2 py-1.5 border-t text-[13px]" style="border-color: var(--grid)">
+                  <img class="hs w-7 h-7" :src="headshot(p.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <span class="flex-1 truncate font-medium" x-text="p.name"></span>
+                  <span class="w-8 text-right num text-muted" x-text="p.games"></span>
+                  <span class="w-12 text-right num font-semibold" x-text="fmt.n(p.pts)"></span>
+                  <span class="w-12 text-right num" :class="signClass(p.breakout, 20)" x-text="fmt.signed(p.breakout, 0)"></span>
+                  <span class="w-12 text-right num" :class="signClass(p.diff, 20)" x-text="fmt.signed(p.diff, 0)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-5 gap-4">
+          <div class="card lg:col-span-2" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3>Franchise history</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-56" x-chart="finishChart()"></div>
+            <div x-show="tv" x-html="tableHtml(finishChart())"></div>
+          </div>
+          <div class="card lg:col-span-3">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th>Season</th><th>Team</th><th class="num">W-L</th><th class="num">Luck</th><th class="num">Coaching</th><th>Finish</th></tr></thead>
+                <tbody>
+                  <template x-for="s in [...ownerSeasons].reverse()" :key="s.season">
+                    <tr>
+                      <td x-text="fmt.seasonLabel(s.season)"></td>
+                      <td class="font-medium" x-text="s.name"></td>
+                      <td class="num" x-text="fmt.rec(s)"></td>
+                      <td class="num" :class="signClass(s.luck)" x-text="fmt.signed(s.luck)"></td>
+                      <td class="num" x-text="fmt.pct(s.efficiency)"></td>
+                      <td><span x-show="s.champion" class="chip accent">🏆</span><span x-show="!s.champion && s.rank_final" class="chip" x-text="fmt.ord(s.rank_final)"></span><span x-show="!s.complete" class="text-xs text-muted">In progress</span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      </template>
     </section>
 
     <!-- ============ STANDINGS ============ -->
@@ -1072,6 +1243,7 @@
 <script src="js/core.js"></script>
 <script src="js/legacy.js"></script>
 <script src="js/matchups.js"></script>
+<script src="js/teams.js"></script>
 <script src="js/app.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>

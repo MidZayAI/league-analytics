@@ -81,7 +81,13 @@ window.Core = {
       if (this.page === 'cap') this.loadAll();
     } else if (sec === 'teams') {
       await this.seasonWithResults();
-      Object.assign(this, { section: 'teams', page: 'standings' });
+      Object.assign(this, { section: 'teams', page: 'teams' });
+    } else if (sec === 'team' && a) {
+      await this.seasonWithResults();
+      const owner = decodeURIComponent(a);
+      const t = this.S?.teams.find((x) => x.owner_id === owner);
+      Object.assign(this, { section: 'teams', page: 'team', teamOwner: owner, ownerSel: owner });
+      if (t) this.teamSel = t.team_id;
     } else if (sec === 'history') {
       Object.assign(this, { section: 'history', page: 'franchises' });
     } else {
@@ -115,6 +121,9 @@ window.Core = {
     }
     this.luckTeam = 'all';
     if (this.section === 'matchups') this.weekSel = this.defaultWeek;
+    // on a team page, follow the same franchise (owner) into the new season
+    const mine = this.teamOwner && ts.find((t) => t.owner_id === this.teamOwner);
+    if (mine) this.teamSel = mine.team_id;
   },
   toggleTheme() {
     document.documentElement.dataset.theme = isDark() ? 'light' : 'dark';
