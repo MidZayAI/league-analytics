@@ -47,6 +47,25 @@ def clean(o):
     return o
 
 
+def stamp_assets():
+    """Add ?v=<content hash> to the page's local script tags so browsers never pair a new page
+    with stale cached scripts (GitHub Pages lets browsers cache files for ~10 minutes)."""
+    import hashlib
+    import re
+    page = ROOT / "site" / "index.html"
+    html = page.read_text(encoding="utf-8")
+
+    def tag(m):
+        f = ROOT / "site" / m.group(1)
+        # normalize line endings so Windows and CI checkouts produce the same stamp
+        v = hashlib.sha1(f.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:10] if f.exists() else "0"
+        return f'src="{m.group(1)}?v={v}"'
+
+    out = re.sub(r'src="(js/[\w.-]+\.js)(?:\?v=[\w]+)?"', tag, html)
+    if out != html:
+        page.write_text(out, encoding="utf-8")
+
+
 def write(name, data):
     SITE_DATA.mkdir(parents=True, exist_ok=True)
     (SITE_DATA / name).write_text(json.dumps(clean(data), separators=(",", ":")), encoding="utf-8")
@@ -178,6 +197,7 @@ def main():
         "latest_sp": int(cur["daily"].sp.max()) if not cur["daily"].empty else None,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
+    stamp_assets()
     print(f"wrote {len(seasons) + 2} files to {SITE_DATA}")
 
     if CURRENT in built and not built[CURRENT][0]["complete"]:
