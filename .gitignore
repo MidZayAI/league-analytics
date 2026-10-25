@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+.claude/
+# large one-off probe dumps; rebuildable caches
+data/raw/discovery/
+data/tidy/
