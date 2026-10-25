@@ -12,6 +12,7 @@ const GLOSSARY = {
   coachloss: 'Coaching loss: the team\'s own best possible lineup (same players, same cap) would have won.',
   breakdown: 'Pregame expected → availability (who played) → roster moves → lineup & cap → breakouts (season level vs. expectation) → hot/cold (week-to-week swings). Always adds up to the real score.',
   sofar: 'The same breakdown for the days played so far this week.',
+  playerproj: 'PTS = points that counted so far this week. PROJ = projected week total: points so far plus his projected average times the starts he is expected to get in the remaining games (under the cap).',
 };
 
 const SILHOUETTE = "data:image/svg+xml," + encodeURIComponent(
@@ -69,7 +70,9 @@ window.Core = {
       if (+a !== this.season) await this.selectSeason(+a);
       Object.assign(this, { section: 'matchups', page: 'h2h', weekSel: +b, weekMid: +c });
     } else if (sec === 'matchups') {
-      if (a && +a !== this.season) await this.selectSeason(+a);
+      // a bare #/matchups always means "now": the live week if one is running
+      const target = a ? +a : (this.live?.active ? this.live.season : this.season);
+      if (target !== this.season) await this.selectSeason(target);
       Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
     } else if (sec === 'league') {
       await this.seasonWithResults();

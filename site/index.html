@@ -193,6 +193,7 @@
           <div class="text-sm text-ink2" x-text="weekHeader?.dates"></div>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs">
+          <a x-show="live?.active && !isLiveWeek" :href="`#/matchups/${live?.season}/${live?.mp}`" class="chip accent font-semibold"><span class="live-dot"></span>Back to live week</a>
           <span class="chip"><span x-text="`Cap ${weekHeader?.cap}`"></span>
             <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the games cap">i</button><span class="pop" x-show="o" x-text="glossary.cap"></span></span></span>
           <span class="chip" x-show="isLiveWeek" x-text="liveDayLabel"></span>
@@ -304,7 +305,9 @@
           <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
             <div class="card !p-2.5 md:!p-3">
               <div class="flex items-center justify-between px-1 pb-1.5 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
-                <span>Player</span><span class="flex gap-3"><span>Wk</span><span class="w-9 text-right">Today</span></span>
+                <span>Player</span>
+                <span class="flex items-center gap-2"><span class="w-8 text-right">Pts</span><span class="w-8 text-right">Proj</span>
+                  <span class="info-wrap normal-case" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About points and projections">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.playerproj"></span></span></span>
               </div>
               <template x-for="p in livePlayers(s)" :key="p.id">
                 <div class="flex items-center gap-2 px-1 py-1.5 border-t" style="border-color: var(--grid)">
@@ -315,11 +318,12 @@
                       <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[9.5px] font-bold down">OUT</span>
                       <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[9.5px] font-bold text-muted">DTD</span>
                     </div>
-                    <div class="text-[10.5px] text-muted truncate" x-text="`${p.pro} · proj ${fmt.n(p.mu)}${p.left ? ` · ${p.left} left` : ''}`"></div>
+                    <div class="text-[10.5px] text-muted truncate" x-text="[p.pro, todayLabel(p), p.left ? `${p.left} left` : ''].filter(Boolean).join(' · ')"></div>
                   </div>
-                  <div class="flex gap-3 items-baseline text-[13px] num">
-                    <span class="font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
-                    <span class="w-9 text-right text-ink2" x-text="todayLabel(p) || '·'"></span>
+                  <div class="flex gap-2 items-baseline text-[13px] num">
+                    <span class="w-8 text-right font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
+                    <span class="w-8 text-right text-ink2" x-text="fmt.n(p.proj)"></span>
+                    <span class="w-4"></span>
                   </div>
                 </div>
               </template>

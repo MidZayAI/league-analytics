@@ -70,12 +70,16 @@ window.Matchups = {
       const played = p.days.filter((d) => d.state === 'played');
       const games = p.days.filter((d) => d.state === 'game');
       const today = p.days.find((d) => d.sp === now);
+      const wk = played.filter((d) => d.counted).reduce((s, d) => s + d.pts, 0);
+      const startsLeft = games.reduce((s, d) => s + (d.start || 0), 0);  // expected starts left
       return {
         ...p,
-        wk: played.filter((d) => d.counted).reduce((s, d) => s + d.pts, 0),
+        wk,
         gp: played.filter((d) => d.counted).length,
         left: games.filter((d) => d.p > 0).length,
-        start: games.length ? games.reduce((s, d) => s + (d.start || 0), 0) : 0,  // expected starts left
+        start: startsLeft,
+        // projected week total: points so far + projected average x expected starts left
+        proj: wk + p.mu * startsLeft,
         today,
       };
     }).sort((a, b) => b.mu - a.mu);
@@ -83,8 +87,8 @@ window.Matchups = {
   todayLabel(p) {
     const d = p.today;
     if (!d || d.state === 'none') return '';
-    if (d.state === 'played') return d.counted ? fmt.n(d.pts) : `${fmt.n(d.pts)}*`;
-    if (d.state === 'missed') return 'DNP';
-    return d.p === 0 ? 'out' : `${fmt.pct(d.start, 0)}`;
+    if (d.state === 'played') return d.counted ? `today ${fmt.n(d.pts)}` : `today ${fmt.n(d.pts)} (bench)`;
+    if (d.state === 'missed') return 'DNP today';
+    return d.p === 0 ? 'out today' : `tonight ${fmt.pct(d.start, 0)}`;
   },
 };
