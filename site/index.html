@@ -303,34 +303,52 @@
           <div class="label">Rosters</div>
           <button class="btn-ghost" @click="gridView = !gridView" x-text="gridView ? 'Compact view' : 'Day-by-day grid'"></button>
         </div>
-        <div class="grid grid-cols-2 gap-3" x-show="!gridView">
-          <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
-            <div class="card !p-2.5 md:!p-3">
+        <!-- phones: one team at a time -->
+        <div class="md:hidden grid grid-cols-2 gap-1 p-1 rounded-2xl" style="background: var(--wash)" x-show="!gridView" role="tablist" aria-label="Choose team">
+          <template x-for="(s, i) in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+            <button role="tab" :aria-selected="rosterSide === i" @click="rosterSide = i"
+                    class="flex items-center gap-2 rounded-xl px-2.5 py-2 min-w-0 text-left transition"
+                    :style="rosterSide === i ? 'background: var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.25)' : ''">
+              <img class="logo w-7 h-7" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+              <span class="min-w-0">
+                <span class="block text-[12.5px] font-semibold truncate" :class="rosterSide !== i && 'text-ink2'" x-text="s.name"></span>
+                <span class="block text-[15px] font-extrabold leading-tight" :class="rosterSide !== i && 'text-muted'" x-text="fmt.n(s.pts)"></span>
+              </span>
+            </button>
+          </template>
+        </div>
+        <div class="grid md:grid-cols-2 gap-3" x-show="!gridView">
+          <template x-for="(s, i) in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+            <div class="card !p-2.5 md:!p-3" :class="i !== rosterSide && 'hidden md:block'" x-data="{ more: false }">
               <div class="flex items-center justify-between px-1 pb-1.5 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
-                <span>Player</span>
-                <span class="flex items-center gap-2"><span class="w-8 text-right">Pts</span><span class="w-8 text-right">Exp</span>
+                <span class="hidden md:inline" x-text="s.name"></span><span class="md:hidden">Player</span>
+                <span class="flex items-center gap-2"><span class="w-9 text-right">Pts</span><span class="w-9 text-right">Exp</span>
                   <span class="info-wrap normal-case" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About points and projections">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.playerproj"></span></span></span>
               </div>
               <template x-for="p in livePlayers(s)" :key="p.id">
-                <div class="flex items-center gap-2 px-1 py-1.5 border-t" style="border-color: var(--grid)">
-                  <img class="hs w-8 h-8 hidden sm:block" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <div class="items-center gap-2.5 px-1 py-2 border-t" style="border-color: var(--grid)"
+                     :class="p.inactive && !more ? 'hidden md:flex' : 'flex'">
+                  <img class="hs w-9 h-9" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
                   <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-1 text-[13px] font-medium">
-                      <span class="truncate" x-text="lastName(p.name)"></span>
-                      <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[9.5px] font-bold down">OUT</span>
-                      <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[9.5px] font-bold text-muted">DTD</span>
+                    <div class="flex items-center gap-1.5 text-[14px] md:text-[13px] font-semibold md:font-medium">
+                      <span class="truncate" x-text="p.name"></span>
+                      <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[9.5px] font-bold down shrink-0">OUT</span>
+                      <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[9.5px] font-bold text-muted shrink-0">DTD</span>
                     </div>
-                    <div class="text-[10.5px] text-muted truncate">
-                      <span x-show="p.today?.state === 'live'" class="font-bold" style="color: #e5484d">● </span><span x-text="[p.pro, todayLabel(p), p.more >= 1 ? `~${fmt.n(p.more)} more` : ''].filter(Boolean).join(' · ')"></span>
+                    <div class="text-[11.5px] md:text-[10.5px] text-muted truncate">
+                      <span x-show="p.today?.state === 'live'" class="font-bold" style="color: #e5484d">● </span><span x-text="statusLine(p)"></span>
                     </div>
                   </div>
-                  <div class="flex gap-2 items-baseline text-[13px] num">
-                    <span class="w-8 text-right font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
-                    <span class="w-8 text-right" :class="p.gp ? signClass(p.wk - p.exp, 3) || 'text-ink2' : 'text-muted'" :title="p.gp ? `${fmt.signed(p.wk - p.exp, 0)} vs expected` : ''" x-text="p.gp ? fmt.n(p.exp) : '–'"></span>
+                  <div class="flex gap-2 items-baseline text-[14px] md:text-[13px] num">
+                    <span class="w-9 text-right font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
+                    <span class="w-9 text-right" :class="p.gp ? signClass(p.wk - p.exp, 3) || 'text-ink2' : 'text-muted'" :title="p.gp ? `${fmt.signed(p.wk - p.exp, 0)} vs expected` : ''" x-text="p.gp ? fmt.n(p.exp) : '–'"></span>
                     <span class="w-4"></span>
                   </div>
                 </div>
               </template>
+              <button class="md:hidden w-full text-center text-[12.5px] text-ink2 pt-2.5 pb-1 border-t" style="border-color: var(--grid)"
+                      x-show="livePlayers(s).filter(p => p.inactive).length" @click="more = !more"
+                      x-text="more ? 'Hide inactive players' : `Show ${livePlayers(s).filter(p => p.inactive).length} inactive (out or done with no points)`"></button>
             </div>
           </template>
         </div>
@@ -1296,9 +1314,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=3bff027f26"></script>
+<script src="js/core.js?v=a889d79d1e"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
-<script src="js/matchups.js?v=c1cd0a6e10"></script>
+<script src="js/matchups.js?v=36ad5d5917"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>

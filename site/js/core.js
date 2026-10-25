@@ -38,7 +38,7 @@ window.Core = {
   meta: null, history: null, seasons: {}, season: null, live: null, backtest: null,
   section: 'matchups', page: 'matchups', loading: true, error: null, themeTick: 0,
   teamSel: null, ownerSel: null, luckTeam: 'all', luckFilter: 'all', includeCurrent: false,
-  weekSel: null, weekMid: null, gridView: false, nowTick: Date.now(),
+  weekSel: null, weekMid: null, gridView: false, rosterSide: 0, nowTick: Date.now(),
   sections: SECTIONS, leagueViews: LEAGUE_VIEWS, glossary: GLOSSARY, silhouette: SILHOUETTE,
   fmt, tableHtml,
 

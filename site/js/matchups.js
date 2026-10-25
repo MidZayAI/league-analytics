@@ -82,8 +82,15 @@ window.Matchups = {
         // expected points still to come: rest of a game in progress + upcoming games under the cap
         more: (live?.rem || 0) + p.mu * startsLeft,
         today,
+        // can't help this week: nothing counted so far and nothing left to play (out, or done)
+        inactive: !counted.length && !games.some((d) => d.p > 0),
       };
     }).sort((a, b) => b.mu - a.mu);
+  },
+  statusLine(p) {
+    const parts = [p.pro, this.todayLabel(p), p.more >= 1 ? `~${fmt.n(p.more)} more` : ''];
+    if (!p.more && p.today?.state !== 'live' && !p.left) parts.push('done for the week');
+    return parts.filter(Boolean).join(' · ');
   },
   todayLabel(p) {
     const d = p.today;
