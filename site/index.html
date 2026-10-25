@@ -20,21 +20,21 @@
     color-scheme: light;
     --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
     --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: rgba(11,11,11,.04);
-    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --good: #006300; --bad: #d03b3b; --accent-wash: rgba(42,120,214,.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --good: #006300; --bad: #d03b3b; --accent-wash: rgba(42,120,214,.10);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
-      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
   }
   body { background: var(--page); color: var(--ink); }
   [x-cloak] { display: none !important; }
@@ -460,12 +460,12 @@
         <b class="text-ink">How a score is broken down:</b> we start from what each roster was <b class="text-ink">expected</b> to score before the week, using each player's
         projected average and chance to play (same model as the predictor, using only information known at the time). Then we add, step by step:
         <b class="text-ink">availability</b> (who actually played), <b class="text-ink">roster moves</b> (pickups and drops),
-        <b class="text-ink">lineup &amp; cap</b> (which games you actually used vs. the best use of the cap) and <b class="text-ink">hot/cold</b> (players beating or missing their averages).
+        <b class="text-ink">lineup &amp; cap</b> (which games you actually used vs. the best use of the cap), <b class="text-ink">breakouts</b> (players who were simply better or worse this season than expected going in) and <b class="text-ink">hot/cold</b> (week-to-week swings around each player's own season average; close to zero over a season).
         The steps always add up exactly to the real score.
-        <span x-show="season === meta?.seasons?.[0]" class="block mt-1.5 down">⚠ Lower confidence: there's no earlier season to base projections on, so most players look "hot" this year.</span>
+        <span x-show="season === meta?.seasons?.[0]" class="block mt-1.5 down">⚠ Lower confidence: there's no earlier season to base projections on, so breakouts are overstated this year.</span>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <template x-for="t in expTiles" :key="t.label">
           <div class="card !py-3.5">
             <div class="label" x-text="t.label"></div>
@@ -477,17 +477,17 @@
 
       <div class="card">
         <h3>Season breakdown</h3>
-        <div class="sub mb-3">Regular-season totals. Expected record = every matchup re-decided on expected points (your actual lineup at each player's expected average), i.e. with hot and cold games removed.</div>
+        <div class="sub mb-3">Regular-season totals. Expected record = every matchup re-decided with each player at his season average in the games you used, i.e. with week-to-week hot and cold swings removed.</div>
         <div class="tbl-wrap">
           <table class="tbl">
-            <thead><tr><th>Team</th><th class="num">Pregame exp.</th><th class="num">Availability</th><th class="num">Moves</th><th class="num">Lineup</th>
+            <thead><tr><th>Team</th><th class="num">Pregame exp.</th><th class="num">Availability</th><th class="num">Moves</th><th class="num">Lineup</th><th class="num">Breakouts</th>
               <th class="num">Hot/cold</th><th class="num">Actual</th><th class="num">Exp. W-L</th><th class="num">W-L</th></tr></thead>
             <tbody>
               <template x-for="t in expTeams" :key="t.team_id">
                 <tr>
                   <td class="font-medium" x-text="t.name"></td>
                   <td class="num" x-text="fmt.n(t.e0)"></td>
-                  <template x-for="k in ['availability', 'moves', 'lineup', 'hot_cold']" :key="k">
+                  <template x-for="k in ['availability', 'moves', 'lineup', 'breakouts', 'hot_cold']" :key="k">
                     <td class="num" :class="signClass(t[k] - expAvg[k], 25)" x-text="fmt.signed(t[k], 0)"></td>
                   </template>
                   <td class="num font-medium" x-text="fmt.n(t.x_actual)"></td>
@@ -498,7 +498,7 @@
               <tr style="background: var(--wash)">
                 <td class="text-ink2">League average</td>
                 <td class="num text-ink2" x-text="fmt.n(expAvg?.e0)"></td>
-                <template x-for="k in ['availability', 'moves', 'lineup', 'hot_cold']" :key="k"><td class="num text-ink2" x-text="fmt.signed(expAvg?.[k], 0)"></td></template>
+                <template x-for="k in ['availability', 'moves', 'lineup', 'breakouts', 'hot_cold']" :key="k"><td class="num text-ink2" x-text="fmt.signed(expAvg?.[k], 0)"></td></template>
                 <td class="num text-ink2" x-text="fmt.n(expAvg?.x_actual)"></td><td></td><td></td>
               </tr>
             </tbody>
@@ -543,7 +543,7 @@
       <div class="grid lg:grid-cols-2 gap-5">
         <div class="card">
           <h3>Games flipped by hot &amp; cold players</h3>
-          <div class="sub mb-3" x-text="`${flippedGames.length} matchups where the team with fewer expected points won.`"></div>
+          <div class="sub mb-3" x-text="`${flippedGames.length} matchups where the team whose players' season averages said they should lose won anyway, thanks to hot/cold swings.`"></div>
           <div class="tbl-wrap max-h-[460px] overflow-y-auto">
             <table class="tbl">
               <thead class="sticky top-0" style="background: var(--surface)"><tr><th>Wk</th><th>Winner</th><th class="num">Score</th><th class="num">Expected</th><th>Who flipped it</th></tr></thead>
@@ -553,7 +553,7 @@
                     <td class="text-muted" x-text="w.mp"></td>
                     <td><div class="font-medium" x-text="tname(w.team_id)"></div><div class="text-xs text-muted" x-text="'over ' + tname(w.opp_id)"></div></td>
                     <td class="num" x-text="`${fmt.n(w.pts)}–${fmt.n(w.opp_pts)}`"></td>
-                    <td class="num text-ink2" x-text="`${fmt.n(w.e3)}–${fmt.n(w.opp_e3)}`"></td>
+                    <td class="num text-ink2" x-text="`${fmt.n(w.e4)}–${fmt.n(w.opp_e4)}`"></td>
                     <td class="text-xs text-ink2" x-text="(w.hot || []).filter(p => p.diff > 0).slice(0, 2).map(p => `${p.name} ${fmt.signed(p.diff, 0)}`).join(', ')"></td>
                   </tr>
                 </template>
@@ -563,15 +563,16 @@
         </div>
         <div class="card">
           <div class="flex items-start justify-between gap-3 mb-3">
-            <div><h3>Hottest &amp; coldest players</h3><div class="sub">Points in games that counted, versus their expected average. Minimum 3 games.</div></div>
+            <div><h3>Breakouts, hot &amp; cold players</h3><div class="sub">Games that counted for this team. Breakout = season average vs. expected going in. Hot/cold = points vs. his own season average. Minimum 3 games.</div></div>
             <div class="flex gap-1">
+              <button class="btn-ghost" :class="playerSort === 'breakout' && '!text-ink font-semibold'" @click="playerSort = 'breakout'">Breakouts</button>
               <button class="btn-ghost" :class="playerSort === 'hot' && '!text-ink font-semibold'" @click="playerSort = 'hot'">Hottest</button>
               <button class="btn-ghost" :class="playerSort === 'cold' && '!text-ink font-semibold'" @click="playerSort = 'cold'">Coldest</button>
             </div>
           </div>
           <div class="tbl-wrap">
             <table class="tbl">
-              <thead><tr><th>Player</th><th>Team</th><th class="num">G</th><th class="num">Actual</th><th class="num">Expected</th><th class="num">±</th><th class="num">± / G</th></tr></thead>
+              <thead><tr><th>Player</th><th>Team</th><th class="num">G</th><th class="num">Actual</th><th class="num">Expected</th><th class="num">Breakout</th><th class="num">Hot/cold</th></tr></thead>
               <tbody>
                 <template x-for="p in expPlayers" :key="p.team_id + p.name">
                   <tr>
@@ -580,8 +581,8 @@
                     <td class="num" x-text="p.games"></td>
                     <td class="num" x-text="fmt.n(p.pts)"></td>
                     <td class="num text-ink2" x-text="fmt.n(p.exp)"></td>
+                    <td class="num font-medium" :class="signClass(p.breakout)" x-text="fmt.signed(p.breakout, 0)"></td>
                     <td class="num font-medium" :class="signClass(p.diff)" x-text="fmt.signed(p.diff, 0)"></td>
-                    <td class="num" x-text="fmt.signed(p.diff / p.games, 1)"></td>
                   </tr>
                 </template>
               </tbody>
@@ -591,9 +592,10 @@
       </div>
 
       <div class="card !py-3 text-sm text-ink2" x-show="expBias">
-        <b class="text-ink">Calibration check:</b> across the league this season, players scored
+        <b class="text-ink">Calibration check:</b> across the league this season, players' season averages came in
         <b class="text-ink" x-text="`${fmt.signed(expBias?.per_week, 1)} points per team-week (${fmt.signed(100 * (expBias?.pct || 0), 1)}%)`"></b>
-        versus their expected averages. Close to zero means the expectations are fair. A big number means the season as a whole ran hot or cold.
+        versus what was expected going in, so the starting expectations were fair if that's near zero. League-wide hot/cold averaged
+        <b class="text-ink" x-text="fmt.signed(expBias?.hot, 1)"></b> per team-week (always close to zero by design).
       </div>
       </div>
       </template>

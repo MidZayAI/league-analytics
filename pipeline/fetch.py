@@ -99,6 +99,14 @@ def fetch_season(c, season, force=False):
     if force or is_current or not sched_path.exists():
         _write(sched_path, c.pro_schedule(season))
 
+    # ESPN's preseason draft ranks (set before the season): the starting estimate for rookies
+    ranks_path = d / "ranks.json"
+    if force or not ranks_path.exists():
+        pool = (c.players(season, limit=1000) or {}).get("players", [])
+        ranks = {str(p["id"]): r["rank"] for p in pool
+                 if (r := (p["player"].get("draftRanksByRankType") or {}).get("STANDARD")) and r.get("rank")}
+        _write(ranks_path, ranks)
+
     days = season_days(league, season)
     recent = set(days[-REFRESH_DAYS:]) if is_current else set()
     todo = [sp for sp in days if force or sp in recent or not (d / "days" / f"{sp}.json").exists()]

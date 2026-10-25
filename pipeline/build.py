@@ -69,7 +69,7 @@ def expected_cached(season, t, model):
     return e
 
 
-EXP_COLS = ["e0", "availability", "moves", "lineup", "hot_cold", "actual"]
+EXP_COLS = ["e0", "availability", "moves", "lineup", "breakouts", "hot_cold", "actual"]
 
 
 def build_season(season, t, model):
@@ -104,11 +104,11 @@ def build_season(season, t, model):
     if "e0" in reg:
         x = reg.assign(x_w=reg.x_result == "W", x_l=reg.x_result == "L",
                        flips_won=reg.flipped & (reg.result == "W"), flips_lost=reg.flipped & (reg.result == "L"))
-        tot = x.groupby("team_id").agg(**{c: (c, "sum") for c in EXP_COLS + ["e3", "x_w", "x_l", "flips_won", "flips_lost"]})
+        tot = x.groupby("team_id").agg(**{c: (c, "sum") for c in EXP_COLS + ["e3", "e4", "x_w", "x_l", "flips_won", "flips_lost"]})
         # coaching already has a season "actual" column; keep the breakdown's separate
         rows = rows.merge(tot.rename(columns={"actual": "x_actual"}).reset_index(), on="team_id", how="left")
         b = reg[EXP_COLS].mean()
-        print(f"  {season} expected pts, league avg per team-week: " + ", ".join(f"{c} {b[c]:+.1f}" for c in EXP_COLS[1:5]))
+        print(f"  {season} expected pts, league avg per team-week: " + ", ".join(f"{c} {b[c]:+.1f}" for c in EXP_COLS[1:6]))
     return t, w, rows, coach, caps, luck.schedule_swap(w), exp_players
 
 
@@ -130,13 +130,13 @@ def main():
                  "week_avg", "bad_beat", "lucky_win", "gp", "opp_gp", "cap", "cap_hit_sp", "opt_pts",
                  "opt_gp", "max_games", "efficiency", "bench_lost", "coaching_loss", "over_cap",
                  "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days",
-                 "e0", "e1", "e2", "e3", "opp_e3", "availability", "moves", "lineup", "hot_cold", "actual",
+                 "e0", "e1", "e2", "e3", "e4", "opp_e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "actual",
                  "x_result", "flipped", "hot", "cold"]
     team_cols = ["team_id", "owner_id", "name", "abbrev", "seed", "rank_final", "w", "l", "t", "pf", "pa",
                  "exp_w", "luck", "allplay_pct", "pa_vs_avg", "bad_beats", "lucky_wins", "efficiency",
                  "bench_lost", "coaching_losses", "over_cap_weeks", "cap_deficit", "opp_cap_deficit",
                  "missed_pts", "gp_used", "cap_total", "playoffs", "champion", "runner_up",
-                 "e0", "e3", "availability", "moves", "lineup", "hot_cold", "x_actual",
+                 "e0", "e3", "e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "x_actual",
                  "x_w", "x_l", "flips_won", "flips_lost"]
 
     for s, (t, w, rows, coach, caps, swap, exp_players) in built.items():

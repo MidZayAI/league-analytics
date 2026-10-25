@@ -24,8 +24,10 @@ from espn_client import ROOT  # noqa: E402
 
 PARAMS_FILE = Path(__file__).resolve().parent / "model_params.json"
 OUT = ROOT / "site" / "data" / "backtest.json"
-# First pass (k 5-20, r 0-0.5) favored the most shrinkage and no recency blend; this grid extends it.
-GRID = {"k": [20.0, 40.0, 80.0], "r": [0.0], "p_base": [0.80], "p_k": [4.0], "team_sd": [0.0, 0.08, 0.15]}
+GRID = {"k": [5.0, 10.0, 20.0, 40.0, 80.0], "r": [0.0, 0.25], "p_base": [0.80], "p_k": [4.0], "team_sd": [0.08]}
+# Lower k = trusts this season's games sooner (catches breakouts). Pick the most responsive setting
+# whose Brier score is within BRIER_TOL of the best, so accuracy is kept while breakouts register.
+BRIER_TOL = 0.001
 
 
 def team_candidates(roster, est, days, games):
@@ -135,7 +137,9 @@ def main():
             s = score(evaluate(states, model, params, sims=600))
             results.append((s["brier"], params))
             print(f"  {params}  brier {s['brier']:.4f}  logloss {s['logloss']:.4f}")
-        best = min(results, key=lambda x: x[0])[1]
+        top = min(b for b, _ in results)
+        best = min((r for r in results if r[0] <= top + BRIER_TOL), key=lambda r: (r[1]["k"], -r[1]["r"]))[1]
+        print(f"best brier {top:.4f}; most responsive within {BRIER_TOL}: {best}")
         PARAMS_FILE.write_text(json.dumps(best, indent=2), encoding="utf-8")
 
     df = evaluate(states, model, best, sims=3000)

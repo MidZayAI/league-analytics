@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from normalize import RAW
+
 # Defaults; pipeline/backtest.py writes tuned values to model_params.json
 PARAMS = {"k": 10.0, "r": 0.25, "p_base": 0.80, "p_k": 4.0, "team_sd": 0.0}
 _tuned = Path(__file__).resolve().parent / "model_params.json"
@@ -19,6 +21,9 @@ if _tuned.exists():
     PARAMS.update(json.loads(_tuned.read_text(encoding="utf-8")))
 STATUS_PLAY = {"OUT": 0.0, "INJURY_RESERVE": 0.0, "SUSPENSION": 0.0, "DAY_TO_DAY": 0.5}
 OUT_RETURN = 0.15  # chance an OUT player is back for a game 3+ days away
+# Players with a preseason rank but no usable last season (mostly rookies) scored ~7% below what
+# their rank implies for veterans (median 0.93 across 144 players, 2022-23 to 2025-26).
+NO_HISTORY_FACTOR = 0.93
 RECENT_DAYS = 15
 PLAY_WINDOW = 14
 
@@ -45,6 +50,13 @@ def spread(mu, cv):
     return np.maximum(6.0, cv * np.asarray(mu, float))
 
 
+def load_ranks(season):
+    """ESPN preseason draft ranks for a season (player_id -> rank); empty if ESPN has none."""
+    path = RAW / str(season) / "ranks.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return pd.Series({int(k): v for k, v in data.items()}, dtype=float)
+
+
 class HistoryModel:
     """Player state as of the start of any past day, from the league's own daily data."""
 
@@ -62,6 +74,28 @@ class HistoryModel:
         self.repl = float(sm[sm["size"] >= 20]["mean"].quantile(0.25))  # replacement-level prior
         self.cv = fit_cv(played)
         self._by_season = {s: g for s, g in self.G.groupby("season")}
+        self.ranks = {s: load_ranks(s) for s in tables_by_season}
+        self.rank_fit = self._fit_rank_prior()
+
+    def _fit_rank_prior(self):
+        """points per game ~ a + b*ln(preseason rank), fit on players whose last season we know."""
+        xs, ys = [], []
+        for s, ranks in self.ranks.items():
+            if s - 1 not in self._by_season or ranks.empty:
+                continue
+            prev = self.season_mean.xs(s - 1, level="season")
+            prev = prev[prev["size"] >= 10]["mean"]
+            both = ranks.index.intersection(prev.index)
+            xs += list(np.log(ranks[both].clip(upper=400)))
+            ys += list(prev[both])
+        return np.polyfit(xs, ys, 1) if len(xs) >= 50 else None
+
+    def rank_prior(self, season, ids):
+        ranks = self.ranks.get(season)
+        if self.rank_fit is None or ranks is None or ranks.empty:
+            return pd.Series(np.nan, index=ids)
+        r = ranks.reindex(ids)
+        return np.maximum(self.repl, NO_HISTORY_FACTOR * np.polyval(self.rank_fit, np.log(r.clip(upper=400))))
 
     def raw_state(self, season, day):
         """Unblended stats for every player seen this season, as of the start of `day`."""
@@ -83,13 +117,17 @@ class HistoryModel:
             out["prior"] = out.index.map(prior)
         else:
             out["prior"] = np.nan
+        # no usable last season (rookies, missed year): start from the preseason rank instead
+        ranked = self.ranks.get(season, pd.Series(dtype=float)).index
+        out = out.reindex(out.index.union(ranked))
+        out["rank_prior"] = self.rank_prior(season, out.index)
         return out.fillna({"n": 0, "n15": 0, "opps": 0, "played": 0})
 
     def finish(self, raw, player_ids, params=PARAMS):
         """Apply the model to raw state for these players -> DataFrame mu, sd, p (index player_id)."""
         r = raw.reindex(player_ids)
         r = r.fillna({"n": 0, "n15": 0, "opps": 0, "played": 0})
-        prior = r["prior"].fillna(self.repl)
+        prior = r["prior"].fillna(r["rank_prior"]).fillna(self.repl)
         mu = blend_mean(prior, r["mean"], r["n"], r["mean15"], r["n15"], params["k"], params["r"])
         return pd.DataFrame({"mu": mu, "sd": spread(mu, self.cv),
                              "p": play_prob(r["played"], r["opps"], params["p_base"], params["p_k"])},

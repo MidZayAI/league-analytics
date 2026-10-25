@@ -5,7 +5,10 @@ Every team-week is split into steps that add up exactly to the actual score:
   E1  + availability       same roster, but who actually played
   E2  + roster moves       actual daily rosters (pickups/drops), who actually played
   E3  + lineup & cap       projected points of the games that actually counted
-  Act + hot/cold           actual points of those games
+  E4  + breakouts          those games at each player's actual season average (better or worse
+                           this season than expected going in: breakouts, rookies, declines)
+  Act + hot/cold           actual points of those games (week-to-week swings around a player's
+                           own season level; sums to about 0 over a season apart from timing)
 
 Player projections (mu, chance to play) come from the backtested HistoryModel as of the start of
 the week, so nothing uses hindsight. Lineups follow simulate.allocate (best 10 a day, then the
@@ -48,6 +51,8 @@ class SeasonContext:
         # did a player play on a day (known whenever any league team rostered him)
         self.played = {(sp, pid): gp for sp, pid, gp in zip(d.sp, d.player_id, d.gp)}
         self.games = t["pro_games"]
+        # each player's average this season (to date for the current season): his "true level"
+        self.season_avg = d[d.gp > 0].groupby("player_id").pts.mean().to_dict()
         self._raw = {}
 
     def raw(self, day):
@@ -100,22 +105,24 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None):
                            cap_eff, 1, rng)
 
     # E3 / actual: the games that counted
-    cg = counted.assign(mu=counted.player_id.map(mu))
-    e3, actual = float(cg.mu.sum()), float(cg.pts.sum())
-    players = cg.groupby(["player_id", "name"]).agg(games=("gp", "size"), pts=("pts", "sum"), exp=("mu", "sum")).reset_index()
-    players["diff"] = players.pts - players.exp
+    cg = counted.assign(mu=counted.player_id.map(mu), lvl=counted.player_id.map(ctx.season_avg))
+    e3, e4, actual = float(cg.mu.sum()), float(cg.lvl.sum()), float(cg.pts.sum())
+    players = cg.groupby(["player_id", "name"]).agg(games=("gp", "size"), pts=("pts", "sum"), exp=("mu", "sum"),
+                                                    lvl=("lvl", "sum")).reset_index()
+    players["breakout"] = players.lvl - players.exp
+    players["diff"] = players.pts - players.lvl  # hot (+) / cold (-) vs his own season level
 
-    out = {"team_id": tid, "mp": mp, "e0": e0, "e1": e1, "e2": e2, "e3": e3, "actual": actual,
-           "availability": e1 - e0, "moves": e2 - e1, "lineup": e3 - e2, "hot_cold": actual - e3,
+    out = {"team_id": tid, "mp": mp, "e0": e0, "e1": e1, "e2": e2, "e3": e3, "e4": e4, "actual": actual,
+           "availability": e1 - e0, "moves": e2 - e1, "lineup": e3 - e2, "breakouts": e4 - e3, "hot_cold": actual - e4,
            "days_done": len(done), "games_used": int(counted.gp.sum())}
-    parts = out["e0"] + out["availability"] + out["moves"] + out["lineup"] + out["hot_cold"]
+    parts = out["e0"] + out["availability"] + out["moves"] + out["lineup"] + out["breakouts"] + out["hot_cold"]
     assert abs(parts - actual) < 1e-6, (tid, mp, parts, actual)
     return out, players
 
 
 def top_players(players, n=3):
-    fmt = lambda df: [{"name": r.name, "games": int(r.games), "pts": float(r.pts), "exp": float(r.exp), "diff": float(r.diff)}
-                      for r in df.itertuples()]
+    fmt = lambda df: [{"name": r.name, "games": int(r.games), "pts": float(r.pts), "exp": float(r.exp),
+                       "lvl": float(r.lvl), "diff": float(r.diff)} for r in df.itertuples()]
     return fmt(players.nlargest(n, "diff")), fmt(players.nsmallest(n, "diff"))
 
 
@@ -141,19 +148,21 @@ def expected_season(season, t, model, seed=11):
     if w.empty:
         return w, pd.DataFrame()
 
-    # expected record: decide each matchup on expected points (E3 vs the opponent's E3)
+    # expected record: decide each matchup on E4 (the games each team used, at every player's true
+    # season level), so only week-to-week hot/cold swings are removed
     opp = m.set_index(["mp", "team_id"]).opp_id
-    e3 = w.set_index(["mp", "team_id"]).e3
-    w["opp_e3"] = [e3.get((mp, opp.get((mp, tid)))) for mp, tid in zip(w.mp, w.team_id)]
-    w["x_result"] = np.where(w.opp_e3.isna(), None, np.where(w.e3 > w.opp_e3, "W", np.where(w.e3 < w.opp_e3, "L", "T")))
+    e4 = w.set_index(["mp", "team_id"]).e4
+    w["opp_e4"] = [e4.get((mp, opp.get((mp, tid)))) for mp, tid in zip(w.mp, w.team_id)]
+    w["x_result"] = np.where(w.opp_e4.isna(), None, np.where(w.e4 > w.opp_e4, "W", np.where(w.e4 < w.opp_e4, "L", "T")))
     res = m.set_index(["mp", "team_id"]).result
     w["result"] = [res.get((mp, tid)) for mp, tid in zip(w.mp, w.team_id)]
     w["flipped"] = w.x_result.notna() & w.result.isin(["W", "L"]) & (w.x_result != w.result)
 
     P = pd.concat(plist, ignore_index=True)
     players = (P.groupby(["team_id", "player_id", "name"])
-               .agg(games=("games", "sum"), pts=("pts", "sum"), exp=("exp", "sum")).reset_index())
-    players["diff"] = players.pts - players.exp
+               .agg(games=("games", "sum"), pts=("pts", "sum"), exp=("exp", "sum"), lvl=("lvl", "sum")).reset_index())
+    players["breakout"] = players.lvl - players.exp
+    players["diff"] = players.pts - players.lvl
     return w, players
 
 
@@ -169,5 +178,5 @@ if __name__ == "__main__":
     reg = w[w.mp.isin(tables[season]["matchups"].query("~playoff").mp)]
     print(f"{season}: {len(w)} team-weeks in {time.time() - t0:.0f}s")
     print(f"mean per team-week: E0 {reg.e0.mean():.0f}, actual {reg.actual.mean():.0f}, "
-          f"hot/cold {reg.hot_cold.mean():+.1f} (bias check, should be ~0), flipped {int(reg.flipped.sum())}")
-    print(reg.groupby("team_id")[["availability", "moves", "lineup", "hot_cold"]].sum().round(0))
+          f"breakouts {reg.breakouts.mean():+.1f}, hot/cold {reg.hot_cold.mean():+.1f}, flipped {int(reg.flipped.sum())}")
+    print(reg.groupby("team_id")[["availability", "moves", "lineup", "breakouts", "hot_cold"]].sum().round(0))

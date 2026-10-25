@@ -645,7 +645,8 @@ document.addEventListener('alpine:init', () => {
       { key: 'availability', label: 'Availability', short: 'Avail.', slot: '--s1' },
       { key: 'moves', label: 'Roster moves', short: 'Moves', slot: '--s2' },
       { key: 'lineup', label: 'Lineup & cap', short: 'Lineup', slot: '--s3' },
-      { key: 'hot_cold', label: 'Hot/cold', short: 'Hot/cold', slot: '--s4' },
+      { key: 'breakouts', label: 'Breakouts', short: 'Breakouts', slot: '--s4' },
+      { key: 'hot_cold', label: 'Hot/cold', short: 'Hot/cold', slot: '--s5' },
     ],
     get hasExpected() { return (this.S?.teams || []).some((t) => t.e0 != null); },
     get expTeams() { return [...(this.S?.teams || [])].filter((t) => t.e0 != null).sort((a, b) => b.x_actual - a.x_actual); },
@@ -653,16 +654,17 @@ document.addEventListener('alpine:init', () => {
       const T = this.expTeams;
       if (!T.length) return null;
       const avg = (k) => T.reduce((s, t) => s + (t[k] || 0), 0) / T.length;
-      return Object.fromEntries(['e0', 'availability', 'moves', 'lineup', 'hot_cold', 'x_actual'].map((k) => [k, avg(k)]));
+      return Object.fromEntries(['e0', 'availability', 'moves', 'lineup', 'breakouts', 'hot_cold', 'x_actual'].map((k) => [k, avg(k)]));
     },
     get expTiles() {
       const T = this.expTeams;
       if (!T.length) return [];
       const by = (k, dir = -1) => [...T].sort((a, b) => dir * (a[k] - b[k]))[0];
-      const hot = by('hot_cold'), cold = by('hot_cold', 1), mv = by('moves'), av = by('availability', 1), lu = by('lineup');
+      const hot = by('hot_cold'), cold = by('hot_cold', 1), mv = by('moves'), av = by('availability', 1), lu = by('lineup'), bo = by('breakouts');
       return [
-        { label: 'Most over expected', value: fmt.signed(hot.hot_cold, 0), sub: hot.name },
-        { label: 'Most under expected', value: fmt.signed(cold.hot_cold, 0), sub: cold.name },
+        { label: 'Best breakouts', value: fmt.signed(bo.breakouts, 0), sub: bo.name },
+        { label: 'Ran hottest', value: fmt.signed(hot.hot_cold, 0), sub: hot.name },
+        { label: 'Ran coldest', value: fmt.signed(cold.hot_cold, 0), sub: cold.name },
         { label: 'Best roster moves', value: fmt.signed(mv.moves, 0), sub: mv.name },
         { label: 'Most hurt by availability', value: fmt.signed(av.availability, 0), sub: av.name },
         { label: 'Best lineup decisions', value: fmt.signed(lu.lineup, 0), sub: lu.name },
@@ -671,8 +673,8 @@ document.addEventListener('alpine:init', () => {
     get expBias() {
       const W = this.regWeeks.filter((w) => w.e3);
       if (!W.length) return null;
-      const hc = W.reduce((s, w) => s + w.hot_cold, 0) / W.length, e3 = W.reduce((s, w) => s + w.e3, 0) / W.length;
-      return { per_week: hc, pct: hc / e3 };
+      const avg = (k) => W.reduce((s, w) => s + (w[k] || 0), 0) / W.length;
+      return { per_week: avg('breakouts'), pct: avg('breakouts') / avg('e3'), hot: avg('hot_cold') };
     },
     signClass(v, band = 0.5) { return v > band ? 'up' : v < -band ? 'down' : ''; },
     signIcon(v, band = 0.5) { return v > band ? '▲' : v < -band ? '▼' : ''; },
@@ -681,7 +683,7 @@ document.addEventListener('alpine:init', () => {
       const T = [...this.expTeams].reverse();
       return {
         option: {
-          ...base(), grid: { ...base().grid, top: 36, right: 16 },
+          ...base(), grid: { ...base().grid, top: 56, right: 16 },  // legend can wrap to two rows
           legend: { ...base().legend, data: this.expSteps.map((s) => s.label) },
           tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow', axis: 'y', shadowStyle: { color: 'rgba(128,128,128,.08)' } },
             formatter: (ps) => { const t = T[ps[0].dataIndex];
@@ -746,12 +748,13 @@ document.addEventListener('alpine:init', () => {
       };
     },
     get flippedGames() {
-      return this.regWeeks.filter((w) => w.flipped && w.result === 'W').sort((a, b) => (b.opp_e3 - b.e3) - (a.opp_e3 - a.e3));
+      return this.regWeeks.filter((w) => w.flipped && w.result === 'W').sort((a, b) => (b.opp_e4 - b.e4) - (a.opp_e4 - a.e4));
     },
-    playerSort: 'hot',
+    playerSort: 'breakout',
     get expPlayers() {
       const P = [...(this.S?.players_expected || [])];
-      P.sort((a, b) => (this.playerSort === 'hot' ? b.diff - a.diff : a.diff - b.diff));
+      const key = { breakout: (p) => -p.breakout, hot: (p) => -p.diff, cold: (p) => p.diff }[this.playerSort];
+      P.sort((a, b) => key(a) - key(b));
       return P.slice(0, 15);
     },
   }));
