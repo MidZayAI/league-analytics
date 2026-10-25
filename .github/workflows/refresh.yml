@@ -2,11 +2,12 @@ name: Refresh league data
 
 on:
   schedule:
-    # times are UTC. Every 30 min across NBA game windows (~7pm-2:30am ET)...
-    - cron: "*/30 23 * * *"
-    - cron: "*/30 0-6 * * *"
+    # times are UTC. Off-peak minutes on purpose: GitHub delays or drops runs scheduled at :00/:30.
+    # Every 30 min across NBA game windows (~7pm-2:30am ET)...
+    - cron: "7,37 23 * * *"
+    - cron: "7,37 0-6 * * *"
     # ...plus daytime runs for injury news and lineup changes
-    - cron: "0 12,15,18,21 * * *"
+    - cron: "17 12,15,18,21 * * *"
   workflow_dispatch:
 
 permissions:
