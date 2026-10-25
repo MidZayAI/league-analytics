@@ -308,7 +308,7 @@
             <div class="card !p-2.5 md:!p-3">
               <div class="flex items-center justify-between px-1 pb-1.5 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
                 <span>Player</span>
-                <span class="flex items-center gap-2"><span class="w-8 text-right">Pts</span><span class="w-8 text-right">Proj</span>
+                <span class="flex items-center gap-2"><span class="w-8 text-right">Pts</span><span class="w-8 text-right">Exp</span>
                   <span class="info-wrap normal-case" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About points and projections">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.playerproj"></span></span></span>
               </div>
               <template x-for="p in livePlayers(s)" :key="p.id">
@@ -320,11 +320,13 @@
                       <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[9.5px] font-bold down">OUT</span>
                       <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[9.5px] font-bold text-muted">DTD</span>
                     </div>
-                    <div class="text-[10.5px] text-muted truncate" x-text="[p.pro, todayLabel(p), p.left ? `${p.left} left` : ''].filter(Boolean).join(' · ')"></div>
+                    <div class="text-[10.5px] text-muted truncate">
+                      <span x-show="p.today?.state === 'live'" class="font-bold" style="color: #e5484d">● </span><span x-text="[p.pro, todayLabel(p), p.more >= 1 ? `~${fmt.n(p.more)} more` : ''].filter(Boolean).join(' · ')"></span>
+                    </div>
                   </div>
                   <div class="flex gap-2 items-baseline text-[13px] num">
                     <span class="w-8 text-right font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
-                    <span class="w-8 text-right text-ink2" x-text="fmt.n(p.proj)"></span>
+                    <span class="w-8 text-right" :class="p.gp ? signClass(p.wk - p.exp, 3) || 'text-ink2' : 'text-muted'" :title="p.gp ? `${fmt.signed(p.wk - p.exp, 0)} vs expected` : ''" x-text="p.gp ? fmt.n(p.exp) : '–'"></span>
                     <span class="w-4"></span>
                   </div>
                 </div>
@@ -360,7 +362,8 @@
                         <template x-for="d in p.days" :key="d.sp">
                           <td class="num !px-1.5" :style="cellStyle(d)"
                               :title="d.state === 'game' ? `${fmt.pct(d.p, 0)} chance to play, starts in ${fmt.pct(d.start, 0)} of simulations` : d.state === 'played' ? (d.counted ? 'Counted' : 'Did not count (bench or over cap)') : ''">
-                            <span x-show="d.state === 'played'" :class="d.counted ? 'font-medium' : 'text-muted line-through'" x-text="fmt.n(d.pts)"></span>
+                            <span x-show="d.state === 'played' || d.state === 'live'" :class="d.counted ? 'font-medium' : 'text-muted line-through'" :title="d.state === 'live' ? d.label : ''">
+                              <span x-show="d.state === 'live'" style="color: #e5484d">● </span><span x-text="fmt.n(d.pts)"></span></span>
                             <span x-show="d.state === 'missed'" class="text-muted">DNP</span>
                             <span x-show="d.state === 'game' && d.p > 0" x-text="fmt.pct(d.start, 0)"></span>
                             <span x-show="d.state === 'game' && d.p === 0" class="text-muted">out</span>
@@ -373,7 +376,7 @@
               </div>
             </div>
           </template>
-          <div class="text-[11.5px] text-muted">Numbers = points (struck through = didn't count). Shaded % = start chance under the remaining cap.</div>
+          <div class="text-[11.5px] text-muted">Numbers = points (struck through = didn't count; ● = game in progress). Shaded % = start chance under the remaining cap.</div>
         </div>
 
         <div class="grid lg:grid-cols-2 gap-4">
@@ -1293,9 +1296,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=e7da07c4d5"></script>
+<script src="js/core.js?v=3bff027f26"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
-<script src="js/matchups.js?v=42574e25a3"></script>
+<script src="js/matchups.js?v=c1cd0a6e10"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>

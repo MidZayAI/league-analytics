@@ -67,19 +67,20 @@ window.Matchups = {
   livePlayers(side) {
     const now = this.live?.sp_now;
     return (side?.players || []).map((p) => {
-      const played = p.days.filter((d) => d.state === 'played');
+      const counted = p.days.filter((d) => (d.state === 'played' || d.state === 'live') && d.counted);
       const games = p.days.filter((d) => d.state === 'game');
       const today = p.days.find((d) => d.sp === now);
-      const wk = played.filter((d) => d.counted).reduce((s, d) => s + d.pts, 0);
+      const wk = counted.reduce((s, d) => s + d.pts, 0);
+      // expected for the games he's played: projected average per finished game, prorated for a game in progress
+      const exp = counted.reduce((s, d) => s + p.mu * (d.state === 'live' ? d.frac : 1), 0);
+      const live = counted.find((d) => d.state === 'live');
       const startsLeft = games.reduce((s, d) => s + (d.start || 0), 0);  // expected starts left
       return {
         ...p,
-        wk,
-        gp: played.filter((d) => d.counted).length,
+        wk, exp, gp: counted.length,
         left: games.filter((d) => d.p > 0).length,
-        start: startsLeft,
-        // projected week total: points so far + projected average x expected starts left
-        proj: wk + p.mu * startsLeft,
+        // expected points still to come: rest of a game in progress + upcoming games under the cap
+        more: (live?.rem || 0) + p.mu * startsLeft,
         today,
       };
     }).sort((a, b) => b.mu - a.mu);
@@ -87,6 +88,7 @@ window.Matchups = {
   todayLabel(p) {
     const d = p.today;
     if (!d || d.state === 'none') return '';
+    if (d.state === 'live') return `${d.label} · ${fmt.n(d.pts)} pts${d.counted ? '' : ' (bench)'}`;
     if (d.state === 'played') return d.counted ? `today ${fmt.n(d.pts)}` : `today ${fmt.n(d.pts)} (bench)`;
     if (d.state === 'missed') return 'DNP today';
     return d.p === 0 ? 'out today' : `tonight ${fmt.pct(d.start, 0)}`;

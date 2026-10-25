@@ -47,6 +47,36 @@ def game_starts(proschedule):
     return out
 
 
+def nba_game_status(day):
+    """pro team id -> {state: pre|in|post, frac: share of the game played, label} from ESPN's public
+    scoreboard (no login needed). Empty if the scoreboard can't be reached."""
+    import requests
+    try:
+        url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+        events = requests.get(url, params={"dates": day.strftime("%Y%m%d")}, timeout=20).json().get("events", [])
+    except Exception:
+        return {}
+    out = {}
+    for e in events:
+        c = e["competitions"][0]
+        st = c["status"]
+        state, period = st["type"]["state"], st.get("period") or 0
+        frac = 0.0
+        if state == "in":
+            try:
+                mins, secs = (st.get("displayClock") or "0:00").split(":") if ":" in str(st.get("displayClock")) else (0, st.get("displayClock") or 0)
+                left = float(mins) + float(secs) / 60
+            except ValueError:
+                left = 0.0
+            # regulation = 4 x 12 min; overtime counts as nearly done
+            frac = 0.97 if period > 4 else min(0.98, ((period - 1) * 12 + (12 - left)) / 48)
+        elif state == "post":
+            frac = 1.0
+        for comp in c["competitors"]:
+            out[int(comp["team"]["id"])] = {"state": state, "frac": frac, "label": st["type"].get("shortDetail", "")}
+    return out
+
+
 def play_chance(status, days_ahead, base):
     if status in pj.STATUS_PLAY:
         if status in ("OUT", "INJURY_RESERVE"):
@@ -89,6 +119,7 @@ def main():
     P = pj.PARAMS
     exp_ctx = expected.SeasonContext(CURRENT, t, model)
     done_days = [sp for sp in week if sp < sp_now]
+    games_now = nba_game_status(dates[sp_now])  # today's NBA games: not started / in progress / final
 
     roster = c.league(CURRENT, ["mRoster"], scoring_period=sp_now)
     daily = t["daily"]
@@ -98,7 +129,7 @@ def main():
     team_out = {}
     for team in roster["teams"]:
         tid = team["id"]
-        rows, grid = [], []
+        rows, grid, in_progress = [], [], []
         for e in team["roster"]["entries"]:
             pl = e["playerPoolEntry"]["player"]
             pid, pro = pl["id"], pl.get("proTeamId")
@@ -118,7 +149,19 @@ def main():
             days = []
             for sp in week:
                 has_game = (pro, sp) in starts
-                if sp < sp_now or (sp == sp_now and starts.get((pro, sp), 0) <= now):
+                g_now = games_now.get(pro) if sp == sp_now and has_game else None
+                if g_now and g_now["state"] == "in":
+                    # game in progress: points so far count now; project the rest of his game too
+                    pts, gp = split(st, CURRENT, 0, 5, sp)
+                    active = e.get("lineupSlotId") not in (12, 13)
+                    rem = mu * (1 - g_now["frac"]) if active and gp else 0.0
+                    if rem > 0:
+                        in_progress.append((rem, sd * max(0.2, (1 - g_now["frac"])) ** 0.5))
+                    days.append({"sp": sp, "state": "live", "pts": pts, "counted": bool(active and gp),
+                                 "label": g_now["label"], "frac": g_now["frac"], "rem": rem})
+                    continue
+                started = starts.get((pro, sp), 0) <= now and not (g_now and g_now["state"] == "pre")
+                if sp < sp_now or (sp == sp_now and started):
                     if sp == sp_now:
                         pts, gp = split(st, CURRENT, 0, 5, sp)
                         counted = e.get("lineupSlotId") not in (12, 13)
@@ -138,7 +181,7 @@ def main():
                          "slot": e.get("lineupSlotId"), "mu": mu, "days": days})
 
         cands = pd.DataFrame(rows, columns=["sp", "mu", "sd", "p", "player_id"])
-        team_out[tid] = {"cands": cands, "grid": grid}
+        team_out[tid] = {"cands": cands, "grid": grid, "in_progress": in_progress}
 
     snaps_path = SNAP_DIR / f"winprob_{CURRENT}.json"
     snaps = json.loads(snaps_path.read_text(encoding="utf-8")) if snaps_path.exists() else []
@@ -155,6 +198,9 @@ def main():
             cur = s.get("totalPointsLive", s.get("totalPoints")) or 0.0
             rem_cap = int(cap_row.cap - gp_used)
             sims, start_p, games = simulate_team(team_out[tid]["cands"], rem_cap, SIMS, rng, P.get("team_sd", 0.0))
+            # rest of games already under way: already counted against the cap, so just add their points
+            for rem, rsd in team_out[tid]["in_progress"]:
+                sims = sims + rng.gamma((rem / rsd) ** 2, rsd ** 2 / rem, size=SIMS)
             cands = team_out[tid]["cands"].assign(start=start_p)
             for g in team_out[tid]["grid"]:
                 for d in g["days"]:
