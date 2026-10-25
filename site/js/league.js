@@ -93,11 +93,12 @@ window.League = {
   get leagueSortKey() { const s = this.leagueSpec; return this.leagueSort && s.cols.some((c) => c.key === this.leagueSort) ? this.leagueSort : s.sort; },
   get leagueSortAsc() { return this.leagueSort === this.leagueSortKey ? this.leagueAsc : this.leagueSpec.asc; },
 
-  // cell background by league rank: blue = best, red = worst, gray midpoint (diverging pair)
-  cellBg(c, t) {
+  cellBg(c, t) { return this.shade(c, t, (this.S?.teams || []).filter((x) => x.w + x.l + x.t > 0)); },
+  // cell background by rank within `rows`: blue = best, red = worst, gray midpoint (diverging pair)
+  shade(c, t, rows) {
     void this.themeTick;
     if (!c.dir) return '';
-    const vals = (this.S?.teams || []).filter((x) => x.w + x.l + x.t > 0).map((x) => c.get(x)).filter((v) => v != null);
+    const vals = rows.map((x) => c.get(x)).filter((v) => v != null);
     const v = c.get(t);
     if (v == null || vals.length < 2) return '';
     const better = vals.filter((x) => (c.dir > 0 ? x > v + 1e-9 : x < v - 1e-9)).length;

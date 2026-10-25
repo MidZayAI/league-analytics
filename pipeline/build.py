@@ -178,6 +178,7 @@ def main():
 
     season_df = pd.concat([b[2] for b in built.values()])
     season_df = season_df.reindex(columns=list(dict.fromkeys(list(season_df.columns) + team_cols)))
+    season_df["logo"] = season_df.logo.map(logos.localize)
     weekly_all = pd.concat([b[1].assign(season=s) for s, b in built.items()])
     coach_all = pd.concat([b[3] for b in built.values()])
     done = season_df[season_df.complete]

@@ -1145,81 +1145,104 @@
 
     </div>
 
-    <!-- ============ FRANCHISES ============ -->
+    <!-- ============ HISTORY ============ -->
     <section x-show="page === 'franchises'" class="space-y-5">
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div>
+        <div class="label" x-text="`${fmt.seasonLabel(meta?.seasons?.[0])} – ${fmt.seasonLabel(meta?.seasons?.[meta.seasons.length - 1])}`"></div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5">History</h1>
+      </div>
+
+      <!-- trophy row -->
+      <div class="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
         <template x-for="c in champions" :key="c.season">
-          <div class="card !py-3.5">
-            <div class="label" x-text="fmt.seasonLabel(c.season) + ' champion'"></div>
-            <div class="font-semibold mt-1 truncate">🏆 <span x-text="c.name"></span></div>
-            <div class="text-xs text-ink2 truncate mt-0.5" x-text="`${owner(c.owner_id)} · ${fmt.rec(c)}`"></div>
-          </div>
+          <a :href="teamHref(c.owner_id)" class="game shrink-0 w-[190px] !p-3.5">
+            <div class="flex items-center justify-between">
+              <span class="label" x-text="fmt.seasonLabel(c.season)"></span><span>🏆</span>
+            </div>
+            <div class="flex items-center gap-2.5 mt-2">
+              <img class="logo w-10 h-10" :src="c.logo || ownerLogo(c.owner_id)" :style="`--ring: ${colorOf(c.owner_id)}`" alt="" loading="lazy" @error="$el.dataset.f ? ($el.src = silhouette) : ($el.dataset.f = 1, $el.src = ownerLogo(c.owner_id))">
+              <div class="min-w-0">
+                <div class="font-bold text-sm truncate" x-text="c.name"></div>
+                <div class="text-[11.5px] text-muted" x-text="fmt.rec(c)"></div>
+              </div>
+            </div>
+          </a>
         </template>
       </div>
 
-      <div class="card">
-        <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
-          <div><h3>All-time franchise table</h3><div class="sub">Franchises follow the owner across team names and seasons. Records are regular season.</div></div>
+      <!-- all-time table -->
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-lg font-bold">All-time</h2>
           <label class="flex items-center gap-2 text-xs text-ink2"><input type="checkbox" x-model="includeCurrent"> Include current season</label>
         </div>
-        <div class="tbl-wrap">
-          <table class="tbl">
-            <thead><tr><th>Franchise</th><th class="num">Seasons</th><th class="num">W-L</th><th class="num">Win %</th><th class="num">🏆</th><th class="num">Finals</th>
-              <th class="num">Playoffs</th><th class="num">Avg finish</th><th class="num">All-play</th><th class="num">Luck</th><th class="num">Coaching</th></tr></thead>
-            <tbody>
-              <template x-for="a in allTime" :key="a.owner_id">
-                <tr class="cursor-pointer" @click="ownerSel = a.owner_id" :style="a.owner_id === ownerSel ? 'background: var(--accent-wash)' : ''">
-                  <td class="font-medium" x-text="owner(a.owner_id)"></td>
-                  <td class="num" x-text="a.seasons"></td>
-                  <td class="num" x-text="fmt.rec(a)"></td>
-                  <td class="num" x-text="fmt.pct(a.win_pct)"></td>
-                  <td class="num font-medium" x-text="a.titles || '–'"></td>
-                  <td class="num" x-text="(a.titles + a.runner_ups) || '–'"></td>
-                  <td class="num" x-text="a.playoff_apps"></td>
-                  <td class="num" x-text="fmt.n(a.avg_finish, 1)"></td>
-                  <td class="num" x-text="fmt.pct(a.allplay_pct)"></td>
-                  <td class="num" :class="a.luck > 1 ? 'up' : a.luck < -1 ? 'down' : ''" x-text="fmt.signed(a.luck)"></td>
-                  <td class="num" x-text="fmt.pct(a.efficiency)"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+        <div class="card !p-0 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="tbl league-tbl">
+              <thead><tr>
+                <th class="!pl-4">Franchise</th>
+                <template x-for="c in historyCols" :key="c.key">
+                  <th class="num cursor-pointer select-none hover:text-ink" :title="c.info" @click="histSortBy(c.key)" :class="histSort === c.key && '!text-ink'">
+                    <span x-text="c.label"></span><span class="ml-0.5" x-show="histSort === c.key" x-text="histAsc ? '↑' : '↓'"></span>
+                  </th>
+                </template>
+              </tr></thead>
+              <tbody>
+                <template x-for="(a, i) in allTimeRows" :key="a.owner_id">
+                  <tr class="cursor-pointer" @click="ownerSel = a.owner_id">
+                    <td class="!pl-4">
+                      <div class="flex items-center gap-2.5 min-w-[160px]">
+                        <span class="w-4 text-right text-[11px] text-muted num" x-text="i + 1"></span>
+                        <img class="logo w-7 h-7" :src="ownerLogo(a.owner_id)" :style="`--ring: ${colorOf(a.owner_id)}`" alt="" loading="lazy" @error="$el.src = silhouette">
+                        <span class="font-semibold truncate max-w-[160px]" x-text="owner(a.owner_id)"></span>
+                      </div>
+                    </td>
+                    <template x-for="c in historyCols" :key="c.key">
+                      <td class="num font-medium" :style="histBg(c, a)" x-text="c.fmt(c.get(a), a)"></td>
+                    </template>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
         </div>
+        <div class="text-[11.5px] text-muted">Franchises follow the owner across team names. Blue = best, red = worst. Tap a column to sort; tap a row to see its timeline below.</div>
       </div>
 
-      <div class="grid lg:grid-cols-5 gap-5">
+      <!-- franchise timeline -->
+      <div class="grid lg:grid-cols-5 gap-4">
         <div class="card lg:col-span-2" x-data="{ tv: false }">
-          <div class="flex items-start justify-between gap-3 mb-2">
-            <div><h3>Franchise timeline</h3><div class="sub">Final placement each season.</div></div>
-            <div class="flex items-center gap-2">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <img class="logo w-7 h-7" :src="ownerLogo(ownerSel)" :style="`--ring: ${colorOf(ownerSel)}`" alt="" @error="$el.src = silhouette">
               <select class="select !py-1 !text-xs" x-model="ownerSel" aria-label="Franchise">
                 <template x-for="a in ownerList" :key="a.owner_id"><option :value="a.owner_id" :selected="a.owner_id === ownerSel" x-text="owner(a.owner_id)"></option></template>
               </select>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
             </div>
+            <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
           </div>
-          <div x-show="!tv" class="chart h-64" x-chart="finishChart()"></div>
+          <div class="label mb-1">Final placement</div>
+          <div x-show="!tv" class="chart h-56" x-chart="finishChart()"></div>
           <div x-show="tv" x-html="tableHtml(finishChart())"></div>
         </div>
         <div class="card lg:col-span-3">
-          <h3 x-text="owner(ownerSel) + ' · season by season'"></h3>
-          <div class="sub mb-3">Team names change; the owner stays the same.</div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 x-text="owner(ownerSel) + ' · season by season'"></h3>
+            <a class="text-xs text-ink2 hover:text-ink" :href="teamHref(ownerSel)">Team page →</a>
+          </div>
           <div class="tbl-wrap">
             <table class="tbl">
-              <thead><tr><th>Season</th><th>Team</th><th class="num">W-L</th><th class="num">PF</th><th class="num">Exp. W</th><th class="num">Luck</th><th class="num">Coaching</th><th>Finish</th></tr></thead>
+              <thead><tr><th>Season</th><th>Team</th><th class="num">W-L</th><th class="num">PF</th><th class="num">Luck</th><th class="num">Coach</th><th>Finish</th></tr></thead>
               <tbody>
-                <template x-for="s in ownerSeasons" :key="s.season">
+                <template x-for="s in [...ownerSeasons].reverse()" :key="s.season">
                   <tr>
                     <td x-text="fmt.seasonLabel(s.season)"></td>
-                    <td class="font-medium" x-text="s.name"></td>
+                    <td><div class="flex items-center gap-2"><img class="logo w-5 h-5" :src="s.logo || ownerLogo(s.owner_id)" alt="" loading="lazy" @error="$el.dataset.f ? ($el.src = silhouette) : ($el.dataset.f = 1, $el.src = ownerLogo(s.owner_id))"><span class="font-medium" x-text="s.name"></span></div></td>
                     <td class="num" x-text="fmt.rec(s)"></td>
                     <td class="num" x-text="fmt.n(s.pf)"></td>
-                    <td class="num" x-text="fmt.n(s.exp_w, 1)"></td>
-                    <td class="num" :class="s.luck > 0.5 ? 'up' : s.luck < -0.5 ? 'down' : ''" x-text="fmt.signed(s.luck)"></td>
+                    <td class="num" :class="signClass(s.luck)" x-text="fmt.signed(s.luck)"></td>
                     <td class="num" x-text="fmt.pct(s.efficiency)"></td>
-                    <td><span x-show="s.champion" class="chip accent">🏆 Champion</span>
-                        <span x-show="!s.champion && s.rank_final" class="chip" x-text="fmt.ord(s.rank_final)"></span>
-                        <span x-show="!s.complete" class="text-xs text-muted">In progress</span></td>
+                    <td><span x-show="s.champion" class="chip accent">🏆 Champion</span><span x-show="!s.champion && s.rank_final" class="chip" x-text="fmt.ord(s.rank_final)"></span><span x-show="!s.complete" class="text-xs text-muted">In progress</span></td>
                   </tr>
                 </template>
               </tbody>
@@ -1228,9 +1251,10 @@
         </div>
       </div>
 
+      <!-- head-to-head -->
       <div class="card" x-data="{ tv: false }">
-        <div class="flex items-start justify-between gap-3 mb-2">
-          <div><h3>All-time head-to-head</h3><div class="sub">Row franchise's record against each column franchise, regular season and playoffs.</div></div>
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div><h3>All-time head-to-head</h3><div class="sub">Row franchise's record against each column franchise, regular season + playoffs.</div></div>
           <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
         </div>
         <div x-show="!tv" class="scroll-x"><div class="chart h-96" style="min-width: 720px" x-chart="h2hChart()"></div></div>
@@ -1238,23 +1262,27 @@
         <div x-show="tv" x-html="tableHtml(h2hChart())"></div>
       </div>
 
-      <div class="card">
-        <h3>Record book</h3>
-        <div class="sub mb-3">Single weeks of 7 days or fewer, all seasons.</div>
-        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
-          <template x-for="[key, title, val] in [['highest_score','Highest score', r => fmt.n(r.pts)], ['lowest_score','Lowest score', r => fmt.n(r.pts)], ['biggest_blowout','Biggest blowout', r => '+' + fmt.n(r.margin)], ['closest_game','Closest game', r => '+' + fmt.n(r.margin)], ['highest_losing_score','Highest losing score', r => fmt.n(r.pts)], ['most_bench_points','Most points left on bench', r => fmt.n(r.bench_lost)]]" :key="key">
-            <div>
-              <div class="label mb-1.5" x-text="title"></div>
-              <template x-for="(r, i) in history.records[key]" :key="i">
-                <div class="flex items-baseline justify-between gap-3 py-1.5 border-b last:border-0 text-sm" style="border-color: var(--grid)">
-                  <div class="min-w-0"><span class="font-medium" x-text="owner(r.owner_id)"></span>
-                    <span class="text-xs text-muted" x-text="(r.opp_owner_id ? ' vs ' + owner(r.opp_owner_id) + ' · ' : ' · ') + recordLabel(r)"></span></div>
-                  <span class="num font-medium shrink-0" x-text="val(r)"></span>
+      <!-- record book -->
+      <div class="space-y-2">
+        <h2 class="text-lg font-bold">Record book</h2>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <template x-for="rc in recordCards" :key="rc.key">
+            <div class="card !p-4">
+              <div class="label mb-2" x-text="rc.title"></div>
+              <template x-for="(r, i) in recordRows(rc.key)" :key="i">
+                <div class="flex items-center gap-2.5 py-1.5" :class="i && 'border-t'" style="border-color: var(--grid)">
+                  <img class="logo" :class="i ? 'w-6 h-6' : 'w-8 h-8'" :src="ownerLogo(r.owner_id)" :style="`--ring: ${colorOf(r.owner_id)}`" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate" :class="i ? 'text-[13px] font-medium' : 'text-sm font-bold'" x-text="owner(r.owner_id)"></div>
+                    <div class="text-[11px] text-muted truncate" x-text="(r.opp_owner_id ? 'vs ' + owner(r.opp_owner_id) + ' · ' : '') + recordLabel(r)"></div>
+                  </div>
+                  <span class="num shrink-0" :class="i ? 'text-[13px] font-semibold' : 'text-lg font-extrabold'" x-text="rc.val(r)"></span>
                 </div>
               </template>
             </div>
           </template>
         </div>
+        <div class="text-[11.5px] text-muted">Single weeks of 7 days or fewer; weeks where a team scored 0 (abandoned roster) are left out.</div>
       </div>
     </section>
   </div>
@@ -1270,8 +1298,9 @@
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=42574e25a3"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
-<script src="js/league.js?v=0f6ebcf988"></script>
-<script src="js/app.js?v=2007d1fa65"></script>
+<script src="js/league.js?v=965060248e"></script>
+<script src="js/history.js?v=428d3cc680"></script>
+<script src="js/app.js?v=89553170cb"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>
