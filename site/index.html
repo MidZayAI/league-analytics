@@ -87,8 +87,7 @@
   .week-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 99px; font-size: 13px; font-weight: 600; white-space: nowrap;
                background: var(--surface); border: 1px solid var(--border); color: var(--ink2); }
   .week-chip.active { background: var(--ink); color: var(--page); border-color: var(--ink); }
-  .live-dot { width: 7px; height: 7px; border-radius: 99px; background: #e5484d; box-shadow: 0 0 0 0 rgba(229,72,77,.6); animation: pulse 1.8s infinite; }
-  @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(229,72,77,0); } 100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); } }
+  .live-dot { width: 7px; height: 7px; border-radius: 99px; background: #e5484d; }
   .pill-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #e5484d; }
   .tag { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--wash); color: var(--ink2); }
   .stat { font-size: 11.5px; color: var(--muted); } .stat b { color: var(--ink); font-weight: 650; }
@@ -190,7 +189,7 @@
 
       <div class="flex flex-wrap items-end justify-between gap-2" x-show="weekHeader">
         <div>
-          <div class="pill-live" x-show="isLiveWeek"><span class="live-dot"></span>LIVE</div>
+          <div class="pill-live" x-show="isLiveWeek"><span class="live-dot"></span>IN PROGRESS</div>
           <div class="label" x-show="!isLiveWeek">Final</div>
           <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5" x-text="weekHeader?.title"></h1>
           <div class="text-sm text-ink2" x-text="weekHeader?.dates"></div>
@@ -200,7 +199,7 @@
           <span class="chip"><span x-text="`Cap ${weekHeader?.cap}`"></span>
             <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the games cap">i</button><span class="pop" x-show="o" x-text="glossary.cap"></span></span></span>
           <span class="chip" x-show="isLiveWeek" x-text="liveDayLabel"></span>
-          <span class="chip" x-show="isLiveWeek" x-text="'Updated ' + liveUpdatedShort"></span>
+          <span class="chip" x-show="isLiveWeek" :title="liveUpdatedShort" x-text="'Updated ' + ago(live?.updated_at)"></span>
         </div>
       </div>
 
@@ -273,7 +272,7 @@
       <template x-if="h2hLive">
       <div class="space-y-4">
         <div class="card !p-5">
-          <div class="flex items-center justify-center gap-2 mb-3"><span class="pill-live"><span class="live-dot"></span>LIVE</span><span class="text-xs text-muted" x-text="liveDayLabel"></span></div>
+          <div class="flex items-center justify-center gap-2 mb-3"><span class="pill-live"><span class="live-dot"></span>IN PROGRESS</span><span class="text-xs text-muted" x-text="`${liveDayLabel} · updated ${ago(live?.updated_at)}`"></span></div>
           <div class="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
             <template x-for="(s, i) in [h2hLive.home, h2hLive.away]" :key="s.team_id">
               <div :class="i === 1 ? 'order-3 text-right items-end' : 'items-start'" class="flex flex-col gap-2 min-w-0">
@@ -567,7 +566,7 @@
         </div>
 
         <a x-show="teamLive" class="game flex items-center gap-3" :href="teamLive ? matchupHref(teamLive.matchup_id, live.mp) : '#'">
-          <span class="pill-live shrink-0"><span class="live-dot"></span>LIVE</span>
+          <span class="pill-live shrink-0"><span class="live-dot"></span>THIS WEEK</span>
           <template x-for="s in teamLive ? [teamLive.home, teamLive.away] : []" :key="s.team_id">
             <div class="flex items-center gap-2 min-w-0 flex-1" :class="s.team_id !== T.team_id && 'justify-end flex-row-reverse text-right'">
               <img class="logo w-8 h-8" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
@@ -1294,7 +1293,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=4910b51151"></script>
+<script src="js/core.js?v=e7da07c4d5"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=42574e25a3"></script>
 <script src="js/teams.js?v=c7000016bd"></script>

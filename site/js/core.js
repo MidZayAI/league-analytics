@@ -19,6 +19,8 @@ const SILHOUETTE = "data:image/svg+xml," + encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' fill='#2c2c2a'/>" +
   "<circle cx='20' cy='15' r='7' fill='#6f6e69'/><path d='M6 40c2-9 8-13 14-13s12 4 14 13z' fill='#6f6e69'/></svg>");
 
+const POLL_MS = 2 * 60 * 1000;  // how often an open page checks for a new refresh
+
 const SECTIONS = [
   { id: 'matchups', label: 'Matchups', icon: 'M4 6h16M4 12h16M4 18h10' },
   { id: 'teams', label: 'Teams', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9c1-4 4-6 7-6s6 2 7 6' },
@@ -36,7 +38,7 @@ window.Core = {
   meta: null, history: null, seasons: {}, season: null, live: null, backtest: null,
   section: 'matchups', page: 'matchups', loading: true, error: null, themeTick: 0,
   teamSel: null, ownerSel: null, luckTeam: 'all', luckFilter: 'all', includeCurrent: false,
-  weekSel: null, weekMid: null, gridView: false,
+  weekSel: null, weekMid: null, gridView: false, nowTick: Date.now(),
   sections: SECTIONS, leagueViews: LEAGUE_VIEWS, glossary: GLOSSARY, silhouette: SILHOUETTE,
   fmt, tableHtml,
 
@@ -59,6 +61,36 @@ window.Core = {
     }
     this.loading = false;
     await this.route();
+    // keep "updated X min ago" current, and pick up new refreshes without a reload
+    setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
+    setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.poll(); });
+  },
+
+  // A refresh rewrites meta.json; when its timestamp changes, swap in the new live/season/history data.
+  async poll() {
+    try {
+      const get = (f) => fetch(`data/${f}`, { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
+      const m = await get('meta.json');
+      if (!m || m.updated_at === this.meta?.updated_at) return;
+      const [live, history, cur] = await Promise.all([get('live.json'), get('history.json'), get(`season_${m.current_season}.json`)]);
+      const followLive = this.isLiveWeek;
+      if (history) this.history = history;
+      if (cur) this.seasons[m.current_season] = cur;
+      if (live) this.live = live;
+      this._pregame = null;
+      this.meta = m;
+      if (followLive && this.live?.active) this.weekSel = this.live.mp;
+    } catch (e) { /* offline or mid-deploy: try again next tick */ }
+  },
+  ago(iso) {
+    void this.nowTick;
+    if (!iso) return '';
+    const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min} min ago`;
+    const h = Math.floor(min / 60);
+    return h < 24 ? `${h} hr ${min % 60} min ago` : new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   },
 
   // #/matchups[/season/mp] · #/matchup/season/mp/id · #/teams · #/league[/view] · #/history

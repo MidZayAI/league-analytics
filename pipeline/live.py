@@ -22,7 +22,7 @@ from simulate import SIMS, simulate_team, win_prob  # noqa: E402
 CURRENT = int(os.environ.get("SEASON", 2027))
 SNAP_DIR = ROOT / "data" / "history"
 OUT = ROOT / "site" / "data" / "live.json"
-SNAP_MIN_GAP = 15 * 60  # seconds between stored win-probability snapshots
+SNAP_MIN_GAP = 9 * 60  # seconds between stored win-probability snapshots (refresh runs every 10 min)
 
 
 def split(stats, season, source, split_type, sp=0):
