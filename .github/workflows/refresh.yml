@@ -56,7 +56,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/raw data/history site/data config
           git diff --cached --quiet || git commit -m "Data refresh $(date -u +'%Y-%m-%d %H:%M') UTC"
-          git push
+          # someone else may have pushed meanwhile; replay this refresh on top (its data wins)
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && break
+            sleep 5
+          done
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
