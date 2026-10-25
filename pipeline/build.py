@@ -16,10 +16,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import coaching  # noqa: E402
+import expected  # noqa: E402
 import franchises  # noqa: E402
 import luck  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 from normalize import TIDY, cached_seasons, load_season  # noqa: E402
+from projections import HistoryModel  # noqa: E402
 
 SITE_DATA = ROOT / "site" / "data"
 CURRENT = int(os.environ.get("SEASON", 2027))
@@ -58,9 +60,21 @@ def coach_cached(season, t):
     return c
 
 
-def build_season(season):
-    t = load_season(season, rebuild=season == CURRENT)
+def expected_cached(season, t, model):
+    path = TIDY / f"expected_{season}.pkl"
+    if season != CURRENT and path.exists():
+        return pd.read_pickle(path)
+    e = expected.expected_season(season, t, model)
+    pd.to_pickle(e, path)
+    return e
+
+
+EXP_COLS = ["e0", "availability", "moves", "lineup", "hot_cold", "actual"]
+
+
+def build_season(season, t, model):
     coach = coach_cached(season, t)
+    exp_w, exp_players = expected_cached(season, t, model)
     caps = t["caps"].copy()
     dates = dict(zip(t["calendar"].sp, t["calendar"].date))
     caps["start"] = caps.sp_start.map(dates)
@@ -76,6 +90,8 @@ def build_season(season):
     w = w.merge(coach.drop(columns=["season", "playoff", "cap"]), on=["mp", "team_id"], how="left")
     w = w.merge(luck.absences(t), on=["mp", "team_id"], how="left")
     w["cap_deficit"] = (w.cap - w.max_games).clip(lower=0)
+    if not exp_w.empty:
+        w = w.merge(exp_w.drop(columns=["result", "days_done"]), on=["mp", "team_id"], how="left")
 
     sl = luck.season_luck(w)
     rows = franchises.season_rows(season, t, sl, coach)
@@ -85,7 +101,15 @@ def build_season(season):
                                        gp_used=("gp", "sum"), cap_total=("cap", "sum")).reset_index()
     opp_def = reg.assign(team_id=reg.opp_id).groupby("team_id").cap_deficit.sum().rename("opp_cap_deficit")
     rows = rows.merge(extra, on="team_id", how="left").merge(opp_def, on="team_id", how="left")
-    return t, w, rows, coach, caps, luck.schedule_swap(w)
+    if "e0" in reg:
+        x = reg.assign(x_w=reg.x_result == "W", x_l=reg.x_result == "L",
+                       flips_won=reg.flipped & (reg.result == "W"), flips_lost=reg.flipped & (reg.result == "L"))
+        tot = x.groupby("team_id").agg(**{c: (c, "sum") for c in EXP_COLS + ["e3", "x_w", "x_l", "flips_won", "flips_lost"]})
+        # coaching already has a season "actual" column; keep the breakdown's separate
+        rows = rows.merge(tot.rename(columns={"actual": "x_actual"}).reset_index(), on="team_id", how="left")
+        b = reg[EXP_COLS].mean()
+        print(f"  {season} expected pts, league avg per team-week: " + ", ".join(f"{c} {b[c]:+.1f}" for c in EXP_COLS[1:5]))
+    return t, w, rows, coach, caps, luck.schedule_swap(w), exp_players
 
 
 def main():
@@ -94,7 +118,9 @@ def main():
         fetch.main()
 
     seasons = cached_seasons()
-    built = {s: build_season(s) for s in seasons}
+    tables = {s: load_season(s, rebuild=s == CURRENT) for s in seasons}
+    model = HistoryModel(tables)
+    built = {s: build_season(s, tables[s], model) for s in seasons}
 
     all_teams = pd.concat([b[0]["teams"] for b in built.values()])
     names = franchises.owner_names(all_teams)
@@ -103,23 +129,32 @@ def main():
                  "playoff", "tier", "rank", "opp_rank", "allplay_w", "beat", "n_others", "margin",
                  "week_avg", "bad_beat", "lucky_win", "gp", "opp_gp", "cap", "cap_hit_sp", "opt_pts",
                  "opt_gp", "max_games", "efficiency", "bench_lost", "coaching_loss", "over_cap",
-                 "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days"]
+                 "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days",
+                 "e0", "e1", "e2", "e3", "opp_e3", "availability", "moves", "lineup", "hot_cold", "actual",
+                 "x_result", "flipped", "hot", "cold"]
     team_cols = ["team_id", "owner_id", "name", "abbrev", "seed", "rank_final", "w", "l", "t", "pf", "pa",
                  "exp_w", "luck", "allplay_pct", "pa_vs_avg", "bad_beats", "lucky_wins", "efficiency",
                  "bench_lost", "coaching_losses", "over_cap_weeks", "cap_deficit", "opp_cap_deficit",
-                 "missed_pts", "gp_used", "cap_total", "playoffs", "champion", "runner_up"]
+                 "missed_pts", "gp_used", "cap_total", "playoffs", "champion", "runner_up",
+                 "e0", "e3", "availability", "moves", "lineup", "hot_cold", "x_actual",
+                 "x_w", "x_l", "flips_won", "flips_lost"]
 
-    for s, (t, w, rows, coach, caps, swap) in built.items():
+    for s, (t, w, rows, coach, caps, swap, exp_players) in built.items():
         rows = rows.assign(owner_name=rows.owner_id.map(names))
+        w = w.reindex(columns=list(dict.fromkeys(list(w.columns) + week_cols)))
+        rows = rows.reindex(columns=list(dict.fromkeys(list(rows.columns) + team_cols)))
+        players = exp_players[exp_players.games >= 3] if len(exp_players) else exp_players
         write(f"season_{s}.json", {
             "season": s, "complete": t["complete"], "playoff_teams": t["playoff_teams"],
             "caps": caps.drop(columns=["season"]).to_dict("records"),
             "teams": rows[team_cols + ["owner_name"]].to_dict("records"),
             "weeks": w[week_cols].to_dict("records"),
             "schedule_swap": swap,
+            "players_expected": players.drop(columns=["player_id"]).to_dict("records") if len(players) else [],
         })
 
     season_df = pd.concat([b[2] for b in built.values()])
+    season_df = season_df.reindex(columns=list(dict.fromkeys(list(season_df.columns) + team_cols)))
     weekly_all = pd.concat([b[1].assign(season=s) for s, b in built.items()])
     coach_all = pd.concat([b[3] for b in built.values()])
     done = season_df[season_df.complete]

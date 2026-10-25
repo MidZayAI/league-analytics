@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import expected  # noqa: E402
 import projections as pj  # noqa: E402
 from espn_client import ESPNClient, ROOT  # noqa: E402
 from normalize import RAW, cached_seasons, load_season  # noqa: E402
@@ -86,6 +87,8 @@ def main():
     model = pj.HistoryModel({s: load_season(s) for s in cached_seasons() if s >= CURRENT - 1})
     raw_state = model.raw_state(CURRENT, sp_now)
     P = pj.PARAMS
+    exp_ctx = expected.SeasonContext(CURRENT, t, model)
+    done_days = [sp for sp in week if sp < sp_now]
 
     roster = c.league(CURRENT, ["mRoster"], scoring_period=sp_now)
     daily = t["daily"]
@@ -159,11 +162,17 @@ def main():
                         hit = cands[(cands.player_id == g["id"]) & (cands.sp == d["sp"])]
                         d["start"] = float(hit.start.iloc[0]) if len(hit) else 0.0
             final = cur + sims
+            so_far = None
+            if done_days:
+                res = expected.week_breakdown(exp_ctx, tid, int(mp), week, int(cap_row.cap), rng, done_days)
+                if res:
+                    so_far, players = res
+                    so_far["hot"], so_far["cold"] = expected.top_players(players)
             sides.append({"team_id": tid, "name": names.get(tid), "pts": cur, "gp_used": gp_used,
                           "cap": int(cap_row.cap), "rem_cap": rem_cap,
                           "avail_games": float(cands.p.sum()), "exp_games": float(games.mean()),
                           "proj": float(final.mean()), "p10": float(np.percentile(final, 10)),
-                          "p90": float(np.percentile(final, 90)), "_final": final,
+                          "p90": float(np.percentile(final, 90)), "_final": final, "expected_so_far": so_far,
                           "players": sorted(team_out[tid]["grid"], key=lambda g: -g["mu"])})
         a, b = sides
         fa, fb = a.pop("_final"), b.pop("_final")

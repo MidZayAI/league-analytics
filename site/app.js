@@ -97,6 +97,7 @@ document.addEventListener('alpine:init', () => {
       { id: 'week', label: 'This Week' },
       { id: 'standings', label: 'Standings' },
       { id: 'luck', label: 'Luck Lab' },
+      { id: 'expected', label: 'Expected' },
       { id: 'coaching', label: 'Coaching' },
       { id: 'cap', label: 'Games Cap' },
       { id: 'franchises', label: 'Franchises' },
@@ -637,6 +638,121 @@ document.addEventListener('alpine:init', () => {
     get upsets() {
       return (this.backtest?.pregame_probs || []).filter((r) => r.season === this.season && r.won === 1)
         .sort((a, b) => a.p - b.p).slice(0, 5);
+    },
+
+    // ---------- Expected points
+    expSteps: [
+      { key: 'availability', label: 'Availability', short: 'Avail.', slot: '--s1' },
+      { key: 'moves', label: 'Roster moves', short: 'Moves', slot: '--s2' },
+      { key: 'lineup', label: 'Lineup & cap', short: 'Lineup', slot: '--s3' },
+      { key: 'hot_cold', label: 'Hot/cold', short: 'Hot/cold', slot: '--s4' },
+    ],
+    get hasExpected() { return (this.S?.teams || []).some((t) => t.e0 != null); },
+    get expTeams() { return [...(this.S?.teams || [])].filter((t) => t.e0 != null).sort((a, b) => b.x_actual - a.x_actual); },
+    get expAvg() {
+      const T = this.expTeams;
+      if (!T.length) return null;
+      const avg = (k) => T.reduce((s, t) => s + (t[k] || 0), 0) / T.length;
+      return Object.fromEntries(['e0', 'availability', 'moves', 'lineup', 'hot_cold', 'x_actual'].map((k) => [k, avg(k)]));
+    },
+    get expTiles() {
+      const T = this.expTeams;
+      if (!T.length) return [];
+      const by = (k, dir = -1) => [...T].sort((a, b) => dir * (a[k] - b[k]))[0];
+      const hot = by('hot_cold'), cold = by('hot_cold', 1), mv = by('moves'), av = by('availability', 1), lu = by('lineup');
+      return [
+        { label: 'Most over expected', value: fmt.signed(hot.hot_cold, 0), sub: hot.name },
+        { label: 'Most under expected', value: fmt.signed(cold.hot_cold, 0), sub: cold.name },
+        { label: 'Best roster moves', value: fmt.signed(mv.moves, 0), sub: mv.name },
+        { label: 'Most hurt by availability', value: fmt.signed(av.availability, 0), sub: av.name },
+        { label: 'Best lineup decisions', value: fmt.signed(lu.lineup, 0), sub: lu.name },
+      ];
+    },
+    get expBias() {
+      const W = this.regWeeks.filter((w) => w.e3);
+      if (!W.length) return null;
+      const hc = W.reduce((s, w) => s + w.hot_cold, 0) / W.length, e3 = W.reduce((s, w) => s + w.e3, 0) / W.length;
+      return { per_week: hc, pct: hc / e3 };
+    },
+    signClass(v, band = 0.5) { return v > band ? 'up' : v < -band ? 'down' : ''; },
+    signIcon(v, band = 0.5) { return v > band ? '▲' : v < -band ? '▼' : ''; },
+    componentsChart() {
+      void this.themeTick;
+      const T = [...this.expTeams].reverse();
+      return {
+        option: {
+          ...base(), grid: { ...base().grid, top: 36, right: 16 },
+          legend: { ...base().legend, data: this.expSteps.map((s) => s.label) },
+          tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow', axis: 'y', shadowStyle: { color: 'rgba(128,128,128,.08)' } },
+            formatter: (ps) => { const t = T[ps[0].dataIndex];
+              return `<b>${esc(t.name)}</b>` + this.expSteps.map((s) => tipRow(s.label, fmt.signed(t[s.key], 0))).join('')
+                + tipRow('Pregame expected → actual', `${fmt.n(t.e0)} → ${fmt.n(t.x_actual)}`); } },
+          xAxis: axis({ type: 'value' }),
+          yAxis: catAxis(T.map((t) => t.name), { axisLine: { show: false }, axisLabel: { color: TOK('--ink2'), fontSize: 12 } }),
+          series: this.expSteps.map((s) => ({
+            type: 'bar', name: s.label, stack: 'c', stackStrategy: 'samesign', barWidth: 16,
+            data: T.map((t) => t[s.key]), itemStyle: { color: TOK(s.slot), borderColor: TOK('--surface'), borderWidth: 1 },
+          })),
+        },
+        table: { cols: [{ label: 'Team' }, ...this.expSteps.map((s) => ({ label: s.label, num: 1 }))],
+                 rows: this.expTeams.map((t) => [t.name, ...this.expSteps.map((s) => fmt.signed(t[s.key], 0))]) },
+      };
+    },
+    expWeek: null,
+    get expWeekSel() {
+      const mps = [...new Set((this.S?.weeks || []).filter((w) => w.result && w.e0 != null).map((w) => w.mp))].sort((a, b) => a - b);
+      return mps.includes(this.expWeek) ? this.expWeek : mps[mps.length - 1];
+    },
+    get expWeekList() {
+      return [...new Set((this.S?.weeks || []).filter((w) => w.result && w.e0 != null).map((w) => w.mp))].sort((a, b) => a - b);
+    },
+    get expRow() { return (this.S?.weeks || []).find((w) => w.mp === this.expWeekSel && w.team_id === this.teamSel && w.e0 != null); },
+    waterfallChart() {
+      void this.themeTick;
+      const w = this.expRow;
+      if (!w) return null;
+      const [neg, , pos] = RAMPS.div[this.dark ? 'dark' : 'light'];
+      const steps = [{ label: 'Pregame expected', short: 'Expected', v: w.e0, total: true },
+        ...this.expSteps.map((s) => ({ label: s.label, short: s.short, v: w[s.key] })), { label: 'Actual', short: 'Actual', v: w.actual, total: true }];
+      let run = 0;
+      const baseVals = [], vals = [];
+      steps.forEach((s) => {
+        if (s.total) { baseVals.push(0); vals.push({ value: s.v, itemStyle: { color: TOK('--muted'), borderRadius: [4, 4, 0, 0] } }); run = s.v; return; }
+        const lo = s.v >= 0 ? run : run + s.v;
+        baseVals.push(lo);
+        vals.push({ value: Math.abs(s.v), itemStyle: { color: s.v >= 0 ? pos : neg, borderRadius: 4 } });
+        run += s.v;
+      });
+      const minY = Math.min(...baseVals.filter((v, i) => !steps[i].total), w.e0, w.actual, w.opp_pts ?? Infinity);
+      return {
+        option: {
+          ...base(), grid: { ...base().grid, top: 24, right: 16 },
+          tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(128,128,128,.08)' } },
+            formatter: (ps) => { const s = steps[ps[0].dataIndex];
+              return `<b>${s.label}</b>` + tipRow(s.total ? 'Points' : 'Change', s.total ? fmt.n(s.v) : fmt.signed(s.v, 0)); } },
+          xAxis: catAxis(steps.map((s) => s.short), { axisLabel: { color: TOK('--muted'), fontSize: 11, interval: 0 } }),
+          yAxis: axis({ type: 'value', min: Math.floor(minY * 0.9 / 50) * 50 }),
+          series: [
+            { type: 'bar', stack: 'w', data: baseVals, itemStyle: { color: 'transparent' }, emphasis: { disabled: true }, tooltip: { show: false }, silent: true },
+            { type: 'bar', stack: 'w', barWidth: '50%', data: vals,
+              label: { show: true, position: 'top', color: TOK('--ink2'), fontSize: 11,
+                       formatter: (p) => { const s = steps[p.dataIndex]; return s.total ? fmt.n(s.v) : fmt.signed(s.v, 0); } },
+              markLine: w.opp_pts == null ? undefined : { silent: true, symbol: 'none', lineStyle: { color: TOK('--ink2'), type: 'solid', width: 1 },
+                label: { formatter: `Opponent ${fmt.n(w.opp_pts)}`, color: TOK('--ink2'), fontSize: 11, position: 'insideEndTop' }, data: [{ yAxis: w.opp_pts }] } },
+          ],
+        },
+        table: { cols: [{ label: 'Step' }, { label: 'Points', num: 1 }],
+                 rows: steps.map((s) => [s.label, s.total ? fmt.n(s.v) : fmt.signed(s.v, 0)]) },
+      };
+    },
+    get flippedGames() {
+      return this.regWeeks.filter((w) => w.flipped && w.result === 'W').sort((a, b) => (b.opp_e3 - b.e3) - (a.opp_e3 - a.e3));
+    },
+    playerSort: 'hot',
+    get expPlayers() {
+      const P = [...(this.S?.players_expected || [])];
+      P.sort((a, b) => (this.playerSort === 'hot' ? b.diff - a.diff : a.diff - b.diff));
+      return P.slice(0, 15);
     },
   }));
 });

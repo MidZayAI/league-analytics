@@ -76,13 +76,14 @@ class HistoryModel:
         out = out.join(pd.DataFrame({"opps": w.groupby("player_id").size(),
                                      "played": w[w.gp > 0].groupby("player_id").size()}), how="outer")
         prev = self.season_mean.xs(season - 1, level="season") if season - 1 in self._by_season else None
-        out = out.fillna({"n": 0, "n15": 0, "opps": 0, "played": 0})
         if prev is not None:
             prior = prev[prev["size"] >= 10]["mean"]
+            # include last season's players who haven't appeared yet this season (week 1, new pickups)
+            out = out.reindex(out.index.union(prior.index))
             out["prior"] = out.index.map(prior)
         else:
             out["prior"] = np.nan
-        return out
+        return out.fillna({"n": 0, "n15": 0, "opps": 0, "played": 0})
 
     def finish(self, raw, player_ids, params=PARAMS):
         """Apply the model to raw state for these players -> DataFrame mu, sd, p (index player_id)."""

@@ -11,6 +11,24 @@ STARTERS = 10
 SIMS = 10000
 
 
+def allocate(avail, mu, sp, cap):
+    """Which available games a team starts: best STARTERS per day by projected mean, then the
+    cap spent on the highest-projected of those. avail: bool [sims, n] -> keep: bool [sims, n].
+
+    Lineup choice depends only on availability and projections (never realized points), so a
+    game's expected contribution is mu * P(started)."""
+    # rank columns by projected mean (static across sims); available games fill slots in that order
+    order = np.argsort(-mu, kind="stable")
+    keep = np.zeros_like(avail)
+    for day in np.unique(sp):
+        cols = order[sp[order] == day]
+        a = avail[:, cols]
+        keep[:, cols] = a & (np.cumsum(a, axis=1) <= STARTERS)
+    k = keep[:, order]
+    keep[:, order] = k & (np.cumsum(k, axis=1) <= cap)
+    return keep
+
+
 def simulate_team(cands, remaining_cap, sims=SIMS, rng=None, team_sd=0.0):
     """cands: DataFrame with sp, mu, sd, p (one row per remaining player-game).
 
@@ -30,16 +48,7 @@ def simulate_team(cands, remaining_cap, sims=SIMS, rng=None, team_sd=0.0):
     avail = rng.random((sims, n)) < p
     shape, scale = (mu / sd) ** 2, sd ** 2 / mu
     pts = rng.gamma(shape, scale, size=(sims, n))
-
-    # rank columns by projected mean (static across sims); available games fill slots in that order
-    order = np.argsort(-mu, kind="stable")
-    keep = np.zeros_like(avail)
-    for day in np.unique(sp):
-        cols = order[sp[order] == day]
-        a = avail[:, cols]
-        keep[:, cols] = a & (np.cumsum(a, axis=1) <= STARTERS)
-    k = keep[:, order]
-    keep[:, order] = k & (np.cumsum(k, axis=1) <= remaining_cap)
+    keep = allocate(avail, mu, sp, remaining_cap)
 
     total = (pts * keep).sum(axis=1)
     if team_sd:
