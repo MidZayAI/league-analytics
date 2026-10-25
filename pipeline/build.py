@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import coaching  # noqa: E402
 import expected  # noqa: E402
 import franchises  # noqa: E402
+import logos  # noqa: E402
 import luck  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 from normalize import TIDY, cached_seasons, load_season  # noqa: E402
@@ -124,15 +125,18 @@ def main():
 
     all_teams = pd.concat([b[0]["teams"] for b in built.values()])
     names = franchises.owner_names(all_teams)
+    profiles = franchises.owner_profiles(all_teams, CURRENT if CURRENT in built else max(built))
+    for p in profiles.values():
+        p["logo"] = logos.localize(p["logo"])
 
-    week_cols = ["mp", "team_id", "opp_id", "owner_id", "opp_owner_id", "pts", "opp_pts", "result",
+    week_cols = ["mp", "matchup_id", "team_id", "opp_id", "owner_id", "opp_owner_id", "pts", "opp_pts", "result",
                  "playoff", "tier", "rank", "opp_rank", "allplay_w", "beat", "n_others", "margin",
                  "week_avg", "bad_beat", "lucky_win", "gp", "opp_gp", "cap", "cap_hit_sp", "opt_pts",
                  "opt_gp", "max_games", "efficiency", "bench_lost", "coaching_loss", "over_cap",
                  "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days",
                  "e0", "e1", "e2", "e3", "e4", "opp_e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "actual",
                  "x_result", "flipped", "hot", "cold"]
-    team_cols = ["team_id", "owner_id", "name", "abbrev", "seed", "rank_final", "w", "l", "t", "pf", "pa",
+    team_cols = ["team_id", "owner_id", "name", "abbrev", "logo", "seed", "rank_final", "w", "l", "t", "pf", "pa",
                  "exp_w", "luck", "allplay_pct", "pa_vs_avg", "bad_beats", "lucky_wins", "efficiency",
                  "bench_lost", "coaching_losses", "over_cap_weeks", "cap_deficit", "opp_cap_deficit",
                  "missed_pts", "gp_used", "cap_total", "playoffs", "champion", "runner_up",
@@ -140,7 +144,7 @@ def main():
                  "x_w", "x_l", "flips_won", "flips_lost"]
 
     for s, (t, w, rows, coach, caps, swap, exp_players) in built.items():
-        rows = rows.assign(owner_name=rows.owner_id.map(names))
+        rows = rows.assign(owner_name=rows.owner_id.map(names), logo=rows.logo.map(logos.localize))
         w = w.reindex(columns=list(dict.fromkeys(list(w.columns) + week_cols)))
         rows = rows.reindex(columns=list(dict.fromkeys(list(rows.columns) + team_cols)))
         players = exp_players[exp_players.games >= 3] if len(exp_players) else exp_players
@@ -150,7 +154,7 @@ def main():
             "teams": rows[team_cols + ["owner_name"]].to_dict("records"),
             "weeks": w[week_cols].to_dict("records"),
             "schedule_swap": swap,
-            "players_expected": players.drop(columns=["player_id"]).to_dict("records") if len(players) else [],
+            "players_expected": players.to_dict("records") if len(players) else [],
         })
 
     season_df = pd.concat([b[2] for b in built.values()])
@@ -160,6 +164,7 @@ def main():
     done = season_df[season_df.complete]
     write("history.json", {
         "owners": names,
+        "profiles": profiles,
         "seasons": season_df[["season", "complete"] + team_cols].to_dict("records"),
         "all_time": franchises.all_time(season_df).to_dict("records"),
         "all_time_complete": franchises.all_time(done).to_dict("records"),

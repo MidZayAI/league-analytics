@@ -27,7 +27,7 @@ from espn_client import ROOT  # noqa: E402
 RAW = ROOT / "data" / "raw"
 TIDY = ROOT / "data" / "tidy"
 
-TIDY_VERSION = 3 # bump when table shapes change so cached pickles rebuild
+TIDY_VERSION = 4 # bump when table shapes change so cached pickles rebuild
 BENCH, IR = 12, 13
 GP_LIMIT_SLOT = "15"  # lineupSlotStatLimits key holding the games-played (stat 42) rate
 ET = timezone(timedelta(hours=-5))  # NBA tip-offs are never near midnight, so a fixed offset is safe
@@ -159,7 +159,7 @@ def build_teams(season, league):
                      "abbrev": t.get("abbrev"), "owner_id": owner_id,
                      "owner": m.get("displayName") or "Unknown",
                      "rank_final": t.get("rankCalculatedFinal") or None,
-                     "seed": t.get("playoffSeed")})
+                     "seed": t.get("playoffSeed"), "logo": t.get("logo")})
     return pd.DataFrame(rows)
 
 

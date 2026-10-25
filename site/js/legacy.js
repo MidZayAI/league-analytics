@@ -1,179 +1,6 @@
-/* League analytics front end: Alpine state + ECharts chart builders.
-   Every chart builder returns {option, table} so each chart has a table-view twin. */
-
-const TOK = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const isDark = () => {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-};
-
-// Sequential (one hue, light -> dark; near-zero recedes toward the surface) and diverging ramps
-const RAMPS = {
-  seq: { light: ['#cde2fb', '#86b6ef', '#3987e5', '#1c5cab', '#0d366b'],
-         dark:  ['#1b2c42', '#1c5cab', '#2a78d6', '#6da7ec', '#b7d3f6'] },
-  div: { light: ['#e34948', '#f0efec', '#2a78d6'],
-         dark:  ['#e66767', '#383835', '#3987e5'] },
-};
-
-const fmt = {
-  n: (x, d = 0) => (x == null || Number.isNaN(+x)) ? '–'
-    : Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }),
-  pct: (x, d = 1) => x == null ? '–' : (x * 100).toFixed(d) + '%',
-  signed: (x, d = 1) => x == null ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(d),
-  rec: (t) => `${t.w ?? 0}-${t.l ?? 0}${t.t ? '-' + t.t : ''}`,
-  date: (iso) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-  ord: (n) => n == null ? '–' : n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'),
-  seasonLabel: (s) => `${s - 1}-${String(s).slice(2)}`,
-};
-
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-function tableHtml(spec) {
-  if (!spec || !spec.table) return '';
-  const { cols, rows } = spec.table;
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) =>
-    `<th class="${c.num ? 'num' : ''}">${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) =>
-    `<tr>${cols.map((c, i) => `<td class="${c.num ? 'num' : ''}">${esc(r[i])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-}
-
-// ---- color helpers (for per-cell heatmap fills + readable labels)
-const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-function rampColor(stops, t) {
-  t = Math.max(0, Math.min(1, t));
-  const seg = (stops.length - 1) * t, i = Math.min(Math.floor(seg), stops.length - 2), f = seg - i;
-  const a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
-  return '#' + a.map((v, k) => Math.round(v + (b[k] - v) * f).toString(16).padStart(2, '0')).join('');
-}
-function inkOn(hex) {
-  const [r, g, b] = hex2rgb(hex).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.38 ? '#0b0b0b' : '#ffffff';
-}
-
-// ---- ECharts base styling from tokens
-function base() {
-  return {
-    animationDuration: 350,
-    textStyle: { fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: TOK('--ink2') },
-    grid: { left: 4, right: 28, top: 36, bottom: 4, containLabel: true },
-    tooltip: {
-      confine: true, backgroundColor: TOK('--surface'), borderColor: TOK('--axis'), borderWidth: 1,
-      textStyle: { color: TOK('--ink'), fontSize: 12 }, padding: [8, 10],
-      extraCssText: 'border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);',
-    },
-    legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 12, itemGap: 16,
-              textStyle: { color: TOK('--ink2'), fontSize: 12 } },
-  };
-}
-const axis = (o = {}) => ({
-  axisLine: { lineStyle: { color: TOK('--axis') } }, axisTick: { show: false },
-  axisLabel: { color: TOK('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: TOK('--grid') } }, ...o,
-});
-const catAxis = (data, o = {}) => axis({ type: 'category', data, splitLine: { show: false }, ...o });
-// value axis for bar charts whose bars carry direct value labels: gridlines only, no tick labels
-const labeledValueAxis = () => axis({ type: 'value', axisLabel: { show: false } });
-const tipRow = (label, value) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${TOK('--ink2')}">${label}</span><b>${value}</b></div>`;
-
-document.addEventListener('alpine:init', () => {
-  // x-chart="spec()" renders spec.option; re-runs whenever reactive inputs change
-  Alpine.directive('chart', (el, { expression }, { effect, evaluateLater, cleanup }) => {
-    const get = evaluateLater(expression);
-    let chart = null;
-    const ro = new ResizeObserver(() => chart && chart.resize());
-    ro.observe(el);
-    effect(() => get((spec) => {
-      if (!spec) return;
-      if (!chart) chart = echarts.init(el, null, { renderer: 'svg' });
-      chart.setOption(spec.option, true);
-    }));
-    cleanup(() => { ro.disconnect(); chart && chart.dispose(); });
-  });
-
-  Alpine.data('app', () => ({
-    meta: null, history: null, seasons: {}, season: null,
-    page: 'standings', loading: true, error: null, themeTick: 0,
-    teamSel: null, ownerSel: null, luckTeam: 'all', luckFilter: 'all', includeCurrent: false,
-    live: null, backtest: null, weekMid: null,
-    pages: [
-      { id: 'week', label: 'This Week' },
-      { id: 'standings', label: 'Standings' },
-      { id: 'luck', label: 'Luck Lab' },
-      { id: 'expected', label: 'Expected' },
-      { id: 'coaching', label: 'Coaching' },
-      { id: 'cap', label: 'Games Cap' },
-      { id: 'franchises', label: 'Franchises' },
-    ],
-    fmt, tableHtml,
-
-    async init() {
-      const route = () => {
-        const home = this.live?.active ? 'week' : 'standings';
-        const p = location.hash.replace('#/', '') || home;
-        this.page = this.pages.some((x) => x.id === p) ? p : home;
-        if (this.page === 'cap') this.loadAll();
-      };
-      addEventListener('hashchange', route);
-      matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.themeTick++);
-      try {
-        const get = (f) => fetch(`data/${f}`, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(f); return r.json(); });
-        const optional = (f) => get(f).catch(() => null);
-        [this.meta, this.history, this.live, this.backtest] = await Promise.all(
-          [get('meta.json'), get('history.json'), optional('live.json'), optional('backtest.json')]);
-        if (!this.live?.active) this.pages = this.pages.filter((p) => p.id !== 'week');
-        this.weekMid = this.live?.matchups?.[0]?.matchup_id ?? null;
-        const cur = this.meta.current_season;
-        await this.loadSeason(cur);
-        const hasGames = this.seasons[cur].weeks.some((w) => w.result && !w.playoff);
-        await this.selectSeason(hasGames ? cur : Math.max(...this.meta.seasons.filter((s) => s !== cur)));
-        const ranked = [...this.history.all_time_complete].sort((a, b) => b.win_pct - a.win_pct);
-        this.ownerSel = ranked[0]?.owner_id;
-      } catch (e) {
-        this.error = `Couldn't load league data (${e.message}). Run python pipeline/build.py first.`;
-      }
-      this.loading = false;
-      route();
-    },
-    async loadSeason(s) {
-      if (!this.seasons[s]) {
-        const r = await fetch(`data/season_${s}.json`, { cache: 'no-cache' });
-        this.seasons[s] = await r.json();
-      }
-      return this.seasons[s];
-    },
-    loadAll() { return Promise.all((this.meta?.seasons || []).map((s) => this.loadSeason(s))); },
-    async selectSeason(s) {
-      s = +s;
-      await this.loadSeason(s);
-      this.season = s;
-      const ts = this.seasons[s].teams;
-      if (!ts.some((t) => t.team_id === this.teamSel)) {
-        this.teamSel = [...ts].sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99))[0]?.team_id;
-      }
-      this.luckTeam = 'all';
-    },
-    toggleTheme() {
-      document.documentElement.dataset.theme = isDark() ? 'light' : 'dark';
-      try { localStorage.setItem('theme', document.documentElement.dataset.theme); } catch (e) { /* storage blocked */ }
-      this.themeTick++;
-    },
-    get dark() { void this.themeTick; return isDark(); },
-
-    // ---------- season accessors
-    get S() { return this.seasons[this.season]; },
-    get teams() { return this.S ? [...this.S.teams].sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99) || b.w - a.w || b.pf - a.pf) : []; },
-    team(id) { return this.S?.teams.find((t) => t.team_id === id); },
-    tname(id) { return this.team(id)?.name ?? '—'; },
-    get regWeeks() { return this.S ? this.S.weeks.filter((w) => w.result && !w.playoff) : []; },
-    get doneMps() { return [...new Set(this.regWeeks.map((w) => w.mp))].sort((a, b) => a - b); },
-    cap(mp) { return this.S?.caps.find((c) => c.mp === mp); },
-    wk(mp) { return `Wk ${mp}`; },
-    wkDates(mp) { const c = this.cap(mp); return c ? `${fmt.date(c.start)} – ${fmt.date(c.end)}` : ''; },
-    owner(id) { return this.history?.owners[id] ?? 'Unknown'; },
-    get hasData() { return this.regWeeks.length > 0; },
-    get updated() {
-      if (!this.meta) return '';
-      return new Date(this.meta.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    },
-
+/* Section builders from the original single-page layout (stats pages). Kept intact while the
+   redesign replaces sections one at a time; mixed into the app in js/app.js. */
+window.Legacy = {
     // ---------- stat tiles
     get tiles() {
       const T = this.S?.teams.filter((t) => t.w + t.l + t.t > 0) || [];
@@ -645,7 +472,7 @@ document.addEventListener('alpine:init', () => {
       { key: 'availability', label: 'Availability', short: 'Avail.', slot: '--s1' },
       { key: 'moves', label: 'Roster moves', short: 'Moves', slot: '--s2' },
       { key: 'lineup', label: 'Lineup & cap', short: 'Lineup', slot: '--s3' },
-      { key: 'breakouts', label: 'Breakouts', short: 'Breakouts', slot: '--s4' },
+      { key: 'breakouts', label: 'Breakouts', short: 'Brkout', slot: '--s4' },
       { key: 'hot_cold', label: 'Hot/cold', short: 'Hot/cold', slot: '--s5' },
     ],
     get hasExpected() { return (this.S?.teams || []).some((t) => t.e0 != null); },
@@ -709,13 +536,13 @@ document.addEventListener('alpine:init', () => {
       return [...new Set((this.S?.weeks || []).filter((w) => w.result && w.e0 != null).map((w) => w.mp))].sort((a, b) => a - b);
     },
     get expRow() { return (this.S?.weeks || []).find((w) => w.mp === this.expWeekSel && w.team_id === this.teamSel && w.e0 != null); },
-    waterfallChart() {
+    waterfallChart() { return this.waterfallChartFor(this.expRow); },
+    waterfallChartFor(w) {
       void this.themeTick;
-      const w = this.expRow;
       if (!w) return null;
       const [neg, , pos] = RAMPS.div[this.dark ? 'dark' : 'light'];
-      const steps = [{ label: 'Pregame expected', short: 'Expected', v: w.e0, total: true },
-        ...this.expSteps.map((s) => ({ label: s.label, short: s.short, v: w[s.key] })), { label: 'Actual', short: 'Actual', v: w.actual, total: true }];
+      const steps = [{ label: 'Pregame expected', short: 'Exp.', v: w.e0, total: true },
+        ...this.expSteps.map((s) => ({ label: s.label, short: s.short, v: w[s.key] })), { label: 'Actual', short: 'Final', v: w.actual, total: true }];
       let run = 0;
       const baseVals = [], vals = [];
       steps.forEach((s) => {
@@ -740,7 +567,7 @@ document.addEventListener('alpine:init', () => {
               label: { show: true, position: 'top', color: TOK('--ink2'), fontSize: 11,
                        formatter: (p) => { const s = steps[p.dataIndex]; return s.total ? fmt.n(s.v) : fmt.signed(s.v, 0); } },
               markLine: w.opp_pts == null ? undefined : { silent: true, symbol: 'none', lineStyle: { color: TOK('--ink2'), type: 'solid', width: 1 },
-                label: { formatter: `Opponent ${fmt.n(w.opp_pts)}`, color: TOK('--ink2'), fontSize: 11, position: 'insideEndTop' }, data: [{ yAxis: w.opp_pts }] } },
+                label: { formatter: `Opponent ${fmt.n(w.opp_pts)}`, color: TOK('--ink2'), fontSize: 11, position: 'insideStartTop' }, data: [{ yAxis: w.opp_pts }] } },
           ],
         },
         table: { cols: [{ label: 'Step' }, { label: 'Points', num: 1 }],
@@ -757,8 +584,4 @@ document.addEventListener('alpine:init', () => {
       P.sort((a, b) => key(a) - key(b));
       return P.slice(0, 15);
     },
-  }));
-});
-
-// Apply stored theme before first paint of charts
-try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+};

@@ -85,7 +85,7 @@ def coach_season(t):
             "over_cap": over_cap,
             # would the optimal lineup have flipped a loss?
             "coaching_loss": r.result == "L" and r.opp_pts is not None and opt_pts > r.opp_pts,
-            "missed_starts": [{"name": x.name, "sp": int(x.sp), "pts": float(x.pts)} for x in missed.itertuples()],
+            "missed_starts": [{"id": int(x.player_id), "name": x.name, "sp": int(x.sp), "pts": float(x.pts)} for x in missed.itertuples()],
         })
     return pd.DataFrame(out)
 

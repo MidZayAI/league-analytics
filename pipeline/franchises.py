@@ -24,6 +24,26 @@ def owner_names(all_teams):
     return {k: v["name"] for k, v in cfg.items()}
 
 
+def owner_profiles(all_teams, current_season):
+    """owner_id -> {name, logo, color_slot}. Current-season franchises get a fixed categorical
+    color slot (1-8, stored in config/owners.json so it never changes); former owners get none."""
+    cfg = json.loads(OWNERS_FILE.read_text(encoding="utf-8"))
+    latest = all_teams.sort_values("season").groupby("owner_id").last()
+    current = all_teams[all_teams.season == current_season].sort_values("team_id").owner_id.tolist()
+    used = {v.get("color_slot") for k, v in cfg.items() if k in current and v.get("color_slot")}
+    free = [s for s in range(1, 9) if s not in used]
+    changed = False
+    for oid in current:
+        if oid in cfg and not cfg[oid].get("color_slot") and free:
+            cfg[oid]["color_slot"] = free.pop(0)
+            changed = True
+    if changed:
+        OWNERS_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return {oid: {"name": v["name"], "logo": latest.logo.get(oid) if oid in latest.index else None,
+                  "color_slot": v.get("color_slot") if oid in current else None}
+            for oid, v in cfg.items()}
+
+
 def season_rows(season, t, luck, coach):
     """One row per team for a season: record, finish, luck, coaching."""
     reg = coach[~coach.playoff & coach.final]

@@ -54,7 +54,7 @@ jobs:
         run: |
           git config user.name "league-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/raw data/history site/data config
+          git add data/raw data/history site/data site/img config
           git diff --cached --quiet || git commit -m "Data refresh $(date -u +'%Y-%m-%d %H:%M') UTC"
           # someone else may have pushed meanwhile; replay this refresh on top (its data wins)
           for i in 1 2 3; do

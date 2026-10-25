@@ -1,0 +1,90 @@
+/* Matchups section: live + past-week scoreboards and the head-to-head screen. */
+
+window.Matchups = {
+  _pregame: null,
+
+  get isLiveSeason() { return !!this.live?.active && this.season === this.live.season; },
+  get defaultWeek() {
+    if (this.isLiveSeason) return this.live.mp;
+    const done = (this.S?.weeks || []).filter((w) => w.result).map((w) => w.mp);
+    return done.length ? Math.max(...done) : 1;
+  },
+  get isLiveWeek() { return this.isLiveSeason && this.weekSel === this.live.mp; },
+  get weekList() {
+    if (!this.S) return [];
+    const played = new Set(this.S.weeks.filter((w) => w.result).map((w) => w.mp));
+    if (this.isLiveSeason) played.add(this.live.mp);
+    return this.S.caps.filter((c) => played.has(c.mp))
+      .map((c) => ({ mp: c.mp, playoff: c.playoff, live: this.isLiveSeason && c.mp === this.live.mp, dates: `${fmt.date(c.start)} – ${fmt.date(c.end)}` }));
+  },
+  get liveDayLabel() {
+    const D = this.live?.days || [];
+    return `Day ${D.findIndex((d) => d.sp === this.live?.sp_now) + 1} of ${D.length}`;
+  },
+  get liveUpdatedShort() {
+    return this.live ? new Date(this.live.updated_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  },
+
+  // pregame win chance from the backtest (2022-23 .. last completed season)
+  pregameP(season, mp, teamId) {
+    if (!this._pregame) {
+      this._pregame = {};
+      (this.backtest?.pregame_probs || []).forEach((r) => { this._pregame[`${r.season}-${r.mp}-${r.team_id}`] = r.p; });
+    }
+    return this._pregame[`${season}-${mp}-${teamId}`];
+  },
+
+  // past week games: pairs of team-week rows sharing a matchup id, winner first
+  gamesFor(mp) {
+    const rows = (this.S?.weeks || []).filter((w) => w.mp === mp && w.opp_id != null && w.result);
+    const by = {};
+    rows.forEach((w) => { (by[w.matchup_id] = by[w.matchup_id] || []).push(w); });
+    return Object.entries(by).filter(([, p]) => p.length === 2).map(([id, p]) => {
+      const [a, b] = p[0].result === 'L' ? [p[1], p[0]] : p;
+      return { id: +id, a, b, playoff: a.playoff, tags: this.tagsFor(a, b) };
+    }).sort((x, y) => (x.playoff - y.playoff) || (y.a.pts + y.b.pts) - (x.a.pts + x.b.pts));
+  },
+  tagsFor(win, lose) {
+    const t = [];
+    const p = this.pregameP(this.season, win.mp, win.team_id);
+    if (p != null && p < 0.35 && win.result === 'W') t.push({ key: 'upset', label: `Upset · ${fmt.pct(p, 0)} pregame` });
+    if (lose.bad_beat) t.push({ key: 'badbeat', label: 'Bad beat' });
+    if (win.flipped) t.push({ key: 'flipped', label: 'Hot/cold flip' });
+    if (lose.coaching_loss) t.push({ key: 'coachloss', label: 'Coaching loss' });
+    if (win.over_cap || lose.over_cap) t.push({ key: 'cap', label: '⚠ Over cap' });
+    return t;
+  },
+  get weekGames() { return this.isLiveWeek ? [] : this.gamesFor(this.weekSel); },
+  get weekHeader() {
+    const c = this.cap(this.weekSel);
+    return c ? { title: `Week ${c.mp}${c.playoff ? ' · Playoffs' : ''}`, dates: `${fmt.date(c.start)} – ${fmt.date(c.end)}`, cap: c.cap } : null;
+  },
+  matchupHref(id, mp = this.weekSel) { return `#/matchup/${this.season}/${mp}/${id}`; },
+
+  // ---------- head-to-head
+  get h2hLive() { return this.isLiveWeek ? this.live.matchups.find((m) => m.matchup_id === this.weekMid) : null; },
+  get h2hPast() { return this.isLiveWeek ? null : this.gamesFor(this.weekSel).find((g) => g.id === this.weekMid); },
+  livePlayers(side) {
+    const now = this.live?.sp_now;
+    return (side?.players || []).map((p) => {
+      const played = p.days.filter((d) => d.state === 'played');
+      const games = p.days.filter((d) => d.state === 'game');
+      const today = p.days.find((d) => d.sp === now);
+      return {
+        ...p,
+        wk: played.filter((d) => d.counted).reduce((s, d) => s + d.pts, 0),
+        gp: played.filter((d) => d.counted).length,
+        left: games.filter((d) => d.p > 0).length,
+        start: games.length ? games.reduce((s, d) => s + (d.start || 0), 0) : 0,  // expected starts left
+        today,
+      };
+    }).sort((a, b) => b.mu - a.mu);
+  },
+  todayLabel(p) {
+    const d = p.today;
+    if (!d || d.state === 'none') return '';
+    if (d.state === 'played') return d.counted ? fmt.n(d.pts) : `${fmt.n(d.pts)}*`;
+    if (d.state === 'missed') return 'DNP';
+    return d.p === 0 ? 'out' : `${fmt.pct(d.start, 0)}`;
+  },
+};

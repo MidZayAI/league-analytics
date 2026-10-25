@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>League Analytics</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%232a78d6'/><path d='M2 16h28M16 2v28M6 6c5 5 5 15 0 20M26 6c-5 5-5 15 0 20' stroke='white' stroke-width='2' fill='none'/></svg>">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem('theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
 <script src="https://cdn.tailwindcss.com/3.4.5"></script>
 <script>
   tailwind.config = {
@@ -18,27 +19,21 @@
 <style>
   :root {
     color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --page: #f4f4f1; --surface: #fcfcfb; --raised: #ffffff; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
     --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: rgba(11,11,11,.04);
-    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --good: #006300; --bad: #d03b3b; --accent-wash: rgba(42,120,214,.10);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
-      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
-    }
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+    --good: #006300; --bad: #d03b3b; --accent-wash: rgba(42,120,214,.10);
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --page: #0d0d0d; --surface: #1a1a19; --raised: #222221; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --good: #0ca30c; --bad: #e66767; --accent-wash: rgba(57,135,229,.16);
   }
   body { background: var(--page); color: var(--ink); }
   [x-cloak] { display: none !important; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; min-width: 0; }
   .card h3 { font-size: 15px; font-weight: 600; color: var(--ink); }
   .card .sub { font-size: 12.5px; color: var(--ink2); margin-top: 2px; line-height: 1.45; }
   .btn-ghost { font-size: 12px; color: var(--ink2); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px; white-space: nowrap; }
@@ -46,9 +41,6 @@
   .select { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 9px; padding: 6px 30px 6px 10px; font-size: 13.5px;
             appearance: none; background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23898781' stroke-width='2.5'><path d='m6 9 6 6 6-6'/></svg>");
             background-repeat: no-repeat; background-position: right 10px center; max-width: 100%; }
-  .tab { padding: 10px 2px; font-size: 14px; color: var(--ink2); border-bottom: 2px solid transparent; white-space: nowrap; }
-  .tab:hover { color: var(--ink); }
-  .tab.active { color: var(--ink); border-color: var(--s1); font-weight: 600; }
   .tbl-wrap { overflow-x: auto; margin: 0 -4px; }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .tbl th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
@@ -61,147 +53,286 @@
   .chip.accent { background: var(--accent-wash); color: var(--ink); }
   .up { color: var(--good); } .down { color: var(--bad); }
   .tile-value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; line-height: 1.15; }
-  .label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 500; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
   .chart { width: 100%; }
   .scroll-x { overflow-x: auto; }
+  .no-scrollbar { scrollbar-width: none; } .no-scrollbar::-webkit-scrollbar { display: none; }
   .legend-ramp { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
   .legend-ramp .bar { width: 120px; height: 8px; border-radius: 4px; }
+
+  /* shell */
+  .side { position: fixed; inset: 0 auto 0 0; width: 236px; flex-direction: column; gap: 4px; padding: 18px 14px;
+          border-right: 1px solid var(--border); background: var(--page); z-index: 30; }
+  .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; font-size: 14.5px; font-weight: 550; color: var(--ink2); }
+  .nav-item:hover { background: var(--wash); color: var(--ink); }
+  .nav-item.active { background: var(--accent-wash); color: var(--ink); }
+  .nav-item.active svg { color: var(--s1); }
+  .bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr);
+                padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--page) 92%, transparent);
+                backdrop-filter: blur(12px); border-top: 1px solid var(--border); }
+  .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .bottom-nav a.active { color: var(--ink); } .bottom-nav a.active svg { color: var(--s1); }
+
+  /* identity + game cards */
+  .logo { border-radius: 999px; object-fit: cover; background: var(--raised); box-shadow: 0 0 0 2px var(--ring, var(--border)); flex-shrink: 0; }
+  .hs { border-radius: 999px; object-fit: cover; object-position: top; background: var(--raised); flex-shrink: 0; }
+  .score { font-size: 30px; font-weight: 750; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .score-xl { font-size: clamp(34px, 8vw, 52px); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+  .game { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px 16px; transition: transform .12s, border-color .12s; }
+  .game:hover { border-color: color-mix(in srgb, var(--s1) 55%, var(--border)); transform: translateY(-1px); }
+  .winbar { display: flex; gap: 2px; height: 6px; border-radius: 99px; overflow: hidden; }
+  .week-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 99px; font-size: 13px; font-weight: 600; white-space: nowrap;
+               background: var(--surface); border: 1px solid var(--border); color: var(--ink2); }
+  .week-chip.active { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .live-dot { width: 7px; height: 7px; border-radius: 99px; background: #e5484d; box-shadow: 0 0 0 0 rgba(229,72,77,.6); animation: pulse 1.8s infinite; }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(229,72,77,0); } 100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); } }
+  .pill-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #e5484d; }
+  .tag { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--wash); color: var(--ink2); }
+  .stat { font-size: 11.5px; color: var(--muted); } .stat b { color: var(--ink); font-weight: 650; }
+
+  /* ⓘ popover */
+  .info-wrap { position: relative; display: inline-flex; vertical-align: middle; }
+  .info { width: 16px; height: 16px; border-radius: 99px; border: 1px solid var(--axis); color: var(--muted); font: 600 10px/14px Georgia, serif; font-style: italic; text-align: center; }
+  .info:hover { color: var(--ink); border-color: var(--ink2); }
+  .pop { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(280px, 80vw); z-index: 40; padding: 10px 12px; border-radius: 12px;
+         background: var(--raised); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 12.5px; line-height: 1.45;
+         color: var(--ink2); font-weight: 400; text-transform: none; letter-spacing: 0; text-align: left; white-space: normal; }
 </style>
 </head>
 <body class="font-sans antialiased" x-data="app" x-cloak>
 
-<!-- Header -->
-<header class="sticky top-0 z-20 border-b" style="background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-color: var(--border)">
-  <div class="max-w-7xl mx-auto px-4">
-    <div class="flex items-center justify-between gap-3 pt-3">
-      <div class="flex items-center gap-3 min-w-0">
-        <div class="w-9 h-9 rounded-xl grid place-items-center shrink-0" style="background: var(--s1)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M6 5.5c3.5 3.5 3.5 9.5 0 13M18 5.5c-3.5 3.5-3.5 9.5 0 13"/></svg>
-        </div>
-        <div class="min-w-0">
-          <div class="font-semibold truncate" x-text="meta?.league_name || 'League Analytics'"></div>
-          <div class="text-xs text-muted truncate">Updated <span x-text="updated"></span></div>
-        </div>
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <select class="select" x-show="page !== 'franchises' && page !== 'week'" :value="season" @change="selectSeason($event.target.value)" aria-label="Season">
-          <template x-for="s in [...(meta?.seasons || [])].reverse()" :key="s">
-            <option :value="s" :selected="s === season" x-text="fmt.seasonLabel(s)"></option>
-          </template>
-        </select>
-        <button class="btn-ghost !p-2" @click="toggleTheme()" :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'">
-          <svg x-show="!dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-          <svg x-show="dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        </button>
-      </div>
+<!-- desktop sidebar -->
+<aside class="side hidden md:flex">
+  <div class="flex items-center gap-2.5 px-2 pb-4">
+    <div class="w-9 h-9 rounded-xl grid place-items-center shrink-0" style="background: var(--s1)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M6 5.5c3.5 3.5 3.5 9.5 0 13M18 5.5c-3.5 3.5-3.5 9.5 0 13"/></svg>
     </div>
-    <nav class="flex gap-6 overflow-x-auto mt-1 -mb-px" aria-label="Pages">
-      <template x-for="p in pages" :key="p.id">
-        <a :href="'#/' + p.id" class="tab" :class="page === p.id && 'active'" x-text="p.label"></a>
-      </template>
-    </nav>
+    <div class="font-bold leading-tight text-[14px]" x-text="meta?.league_name || 'League'"></div>
+  </div>
+  <template x-for="s in sections" :key="s.id">
+    <a :href="'#/' + s.id" class="nav-item" :class="section === s.id && 'active'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="s.icon"/></svg>
+      <span x-text="s.label"></span>
+    </a>
+  </template>
+  <div class="mt-auto space-y-3 px-1">
+    <div x-show="section !== 'history'">
+      <div class="label mb-1.5 px-1">Season</div>
+      <select class="select w-full" @change="selectSeason($event.target.value)" aria-label="Season">
+        <template x-for="s in [...(meta?.seasons || [])].reverse()" :key="s"><option :value="s" :selected="s === season" x-text="fmt.seasonLabel(s)"></option></template>
+      </select>
+    </div>
+    <div class="flex items-center justify-between px-1">
+      <span class="text-[11px] text-muted" x-text="'Updated ' + updated"></span>
+      <button class="btn-ghost !p-1.5" @click="toggleTheme()" :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'">
+        <svg x-show="!dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg x-show="dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- phone top bar -->
+<header class="md:hidden sticky top-0 z-20 flex items-center justify-between gap-2 px-4 py-2.5 border-b"
+        style="background: color-mix(in srgb, var(--page) 90%, transparent); backdrop-filter: blur(12px); border-color: var(--border)">
+  <div class="font-bold text-[15px] truncate" x-text="meta?.league_name || 'League'"></div>
+  <div class="flex items-center gap-2 shrink-0">
+    <select class="select !py-1 !text-xs" x-show="section !== 'history'" @change="selectSeason($event.target.value)" aria-label="Season">
+      <template x-for="s in [...(meta?.seasons || [])].reverse()" :key="s"><option :value="s" :selected="s === season" x-text="fmt.seasonLabel(s)"></option></template>
+    </select>
+    <button class="btn-ghost !p-1.5" @click="toggleTheme()" :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'">
+      <svg x-show="!dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg x-show="dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
   </div>
 </header>
 
-<main class="max-w-7xl mx-auto px-4 py-6 space-y-5">
+<!-- phone bottom tabs -->
+<nav class="bottom-nav md:hidden" aria-label="Sections">
+  <template x-for="s in sections" :key="s.id">
+    <a :href="'#/' + s.id" :class="section === s.id && 'active'">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="s.icon"/></svg>
+      <span x-text="s.label"></span>
+    </a>
+  </template>
+</nav>
+
+<main class="md:pl-[236px]">
+<div class="max-w-6xl mx-auto px-4 pt-4 md:pt-7 pb-28 md:pb-10 space-y-5">
   <div x-show="loading" class="text-ink2 text-sm">Loading league data…</div>
   <div x-show="error" class="card text-sm" x-text="error"></div>
 
   <template x-if="!loading && !error && S">
   <div class="space-y-5">
 
-    <div x-show="page !== 'franchises' && page !== 'week' && !hasData" class="card text-sm text-ink2">
-      No completed regular-season matchups yet for <b x-text="fmt.seasonLabel(season)"></b>. Pick an earlier season above, or check back after week 1.
+    <!-- League view chips (temporary home for the stats pages) -->
+    <div x-show="section === 'league'" class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+      <template x-for="v in leagueViews" :key="v.id">
+        <a :href="'#/league/' + v.id" class="week-chip" :class="page === v.id && 'active'" x-text="v.label"></a>
+      </template>
+    </div>
+    <div x-show="(section === 'league' || section === 'teams') && !hasData" class="card text-sm text-ink2">
+      No completed regular-season matchups yet for <b x-text="fmt.seasonLabel(season)"></b>. Pick an earlier season, or check back after week 1.
     </div>
 
-    <!-- ============ THIS WEEK ============ -->
-    <section x-show="page === 'week' && live?.active" class="space-y-5">
-      <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div class="label" x-text="`${fmt.seasonLabel(live?.season)} · Week ${live?.mp}`"></div>
-          <div class="text-xl font-semibold mt-0.5" x-text="weekRange"></div>
-        </div>
-        <div class="flex flex-wrap gap-2 text-xs">
-          <span class="chip" x-text="`Games cap ${live?.cap}`"></span>
-          <span class="chip" x-text="`Day ${(live?.days || []).findIndex(d => d.sp === live?.sp_now) + 1} of ${(live?.days || []).length}`"></span>
-          <span class="chip" x-text="`Forecast ${liveUpdated}`"></span>
-        </div>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-4">
-        <template x-for="m in live?.matchups || []" :key="m.matchup_id">
-          <button class="card text-left transition hover:shadow-md" @click="weekMid = m.matchup_id"
-                  :style="m.matchup_id === selMatchup?.matchup_id ? 'outline: 2px solid var(--s1); outline-offset: -1px' : ''">
-            <template x-for="(s, i) in [m.home, m.away]" :key="s.team_id">
-              <div class="flex items-center justify-between gap-3" :class="i === 0 ? 'mb-2.5' : ''">
-                <div class="flex items-center gap-2.5 min-w-0">
-                  <span class="w-2.5 h-2.5 rounded-sm shrink-0" :style="`background: var(${i === 0 ? '--s1' : '--s2'})`"></span>
-                  <div class="min-w-0">
-                    <div class="font-medium truncate" x-text="s.name"></div>
-                    <div class="text-xs text-muted" x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj ${fmt.n(s.proj)} (${fmt.n(s.p10)}–${fmt.n(s.p90)})`"></div>
-                  </div>
-                </div>
-                <div class="text-right shrink-0">
-                  <div class="text-2xl font-semibold leading-none" x-text="fmt.n(s.pts)"></div>
-                  <div class="text-xs mt-1" :class="s.win_prob >= 0.5 ? 'text-ink font-semibold' : 'text-muted'" x-text="fmt.pct(s.win_prob, 0) + ' to win'"></div>
-                </div>
-              </div>
-            </template>
-            <div class="flex h-2 mt-3 gap-[2px]" role="img" :aria-label="`${m.home.name} ${fmt.pct(m.home.win_prob, 0)}, ${m.away.name} ${fmt.pct(m.away.win_prob, 0)}`">
-              <div class="rounded-l h-full" :class="m.home.win_prob > 0.995 && 'rounded-r'" :style="`width: ${m.home.win_prob * 100}%; background: var(--s1)`"></div>
-              <div class="rounded-r h-full" :class="m.away.win_prob > 0.995 && 'rounded-l'" :style="`width: ${m.away.win_prob * 100}%; background: var(--s2)`"></div>
-            </div>
-          </button>
+    <!-- ============ MATCHUPS ============ -->
+    <section x-show="page === 'matchups'" class="space-y-4">
+      <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+        <template x-for="w in weekList" :key="w.mp">
+          <a :href="`#/matchups/${season}/${w.mp}`" class="week-chip" :class="w.mp === weekSel && 'active'">
+            <span x-show="w.live" class="live-dot"></span><span x-text="(w.playoff ? 'P' : 'Wk ') + w.mp"></span>
+          </a>
         </template>
       </div>
 
-      <template x-if="selMatchup">
-      <div class="space-y-5">
-        <div class="grid lg:grid-cols-2 gap-5">
-          <div class="card" x-data="{ tv: false }">
-            <div class="flex items-start justify-between gap-3 mb-2">
-              <div><h3 x-text="`${selMatchup.home.name} win probability`"></h3><div class="sub">Every refresh adds a point, so you can watch the matchup swing day to day.</div></div>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+      <div class="flex flex-wrap items-end justify-between gap-2" x-show="weekHeader">
+        <div>
+          <div class="pill-live" x-show="isLiveWeek"><span class="live-dot"></span>LIVE</div>
+          <div class="label" x-show="!isLiveWeek">Final</div>
+          <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5" x-text="weekHeader?.title"></h1>
+          <div class="text-sm text-ink2" x-text="weekHeader?.dates"></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <span class="chip"><span x-text="`Cap ${weekHeader?.cap}`"></span>
+            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the games cap">i</button><span class="pop" x-show="o" x-text="glossary.cap"></span></span></span>
+          <span class="chip" x-show="isLiveWeek" x-text="liveDayLabel"></span>
+          <span class="chip" x-show="isLiveWeek" x-text="'Updated ' + liveUpdatedShort"></span>
+        </div>
+      </div>
+
+      <!-- live week -->
+      <div class="grid md:grid-cols-2 gap-3" x-show="isLiveWeek">
+        <template x-for="m in (isLiveWeek ? live.matchups : [])" :key="m.matchup_id">
+          <a class="game" :href="matchupHref(m.matchup_id)">
+            <template x-for="s in [m.home, m.away]" :key="s.team_id">
+              <div class="flex items-center gap-3 py-1.5">
+                <img class="logo w-10 h-10" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(s.team_id)">
+                <div class="min-w-0 flex-1">
+                  <div class="font-semibold truncate" :class="s.win_prob < 0.5 && 'text-ink2'" x-text="s.name"></div>
+                  <div class="stat"><span x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj `"></span><b x-text="fmt.n(s.proj)"></b></div>
+                </div>
+                <div class="text-right">
+                  <div class="score" x-text="fmt.n(s.pts)"></div>
+                  <div class="text-[11.5px] font-semibold mt-0.5" :class="s.win_prob >= 0.5 ? 'text-ink' : 'text-muted'" x-text="fmt.pct(s.win_prob, 0)"></div>
+                </div>
+              </div>
+            </template>
+            <div class="winbar mt-2.5" role="img" :aria-label="`${m.home.name} ${fmt.pct(m.home.win_prob, 0)}, ${m.away.name} ${fmt.pct(m.away.win_prob, 0)}`">
+              <div :style="`width: ${m.home.win_prob * 100}%; background: ${teamColor(m.home.team_id)}`"></div>
+              <div :style="`width: ${m.away.win_prob * 100}%; background: ${teamColor(m.away.team_id)}`"></div>
             </div>
-            <div x-show="!tv" class="chart h-64" x-chart="timelineChart()"></div>
-            <div x-show="tv" x-html="tableHtml(timelineChart())"></div>
+            <div class="flex items-center justify-between gap-3 mt-3 text-[12px] text-ink2" x-data="{ hc: [...(m.home.expected_so_far?.hot || []), ...(m.away.expected_so_far?.hot || [])].sort((a, b) => b.diff - a.diff)[0],
+                                                                                     cc: [...(m.home.expected_so_far?.cold || []), ...(m.away.expected_so_far?.cold || [])].sort((a, b) => a.diff - b.diff)[0] }">
+              <div class="flex items-center gap-2 min-w-0" x-show="hc && hc.diff > 0">
+                <img class="hs w-6 h-6" :src="headshot(hc?.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <span class="truncate"><b class="up">HOT</b> <span x-text="`${lastName(hc?.name)} ${fmt.signed(hc?.diff, 0)}`"></span></span>
+              </div>
+              <div class="flex items-center gap-2 min-w-0" x-show="cc && cc.diff < 0">
+                <img class="hs w-6 h-6" :src="headshot(cc?.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <span class="truncate"><b class="down">COLD</b> <span x-text="`${lastName(cc?.name)} ${fmt.signed(cc?.diff, 0)}`"></span></span>
+              </div>
+            </div>
+          </a>
+        </template>
+      </div>
+
+      <!-- past week -->
+      <div class="grid md:grid-cols-2 gap-3" x-show="!isLiveWeek">
+        <template x-for="g in weekGames" :key="g.id">
+          <a class="game" :href="matchupHref(g.id)">
+            <template x-for="s in [g.a, g.b]" :key="s.team_id">
+              <div class="flex items-center gap-3 py-1.5">
+                <img class="logo w-10 h-10" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(s.team_id)">
+                <div class="min-w-0 flex-1">
+                  <div class="font-semibold truncate" :class="s.result !== 'W' && 'text-ink2'" x-text="tname(s.team_id)"></div>
+                  <div class="stat" x-show="s.e4 != null"><span>at season level </span><b x-text="fmt.n(s.e4)"></b></div>
+                </div>
+                <div class="score" :class="s.result !== 'W' && 'text-muted'" x-text="fmt.n(s.pts)"></div>
+              </div>
+            </template>
+            <div class="flex flex-wrap gap-1.5 mt-2.5" x-show="g.tags.length">
+              <template x-for="t in g.tags" :key="t.key"><span class="tag" x-text="t.label"></span></template>
+            </div>
+          </a>
+        </template>
+      </div>
+    </section>
+
+    <!-- ============ HEAD-TO-HEAD ============ -->
+    <section x-show="page === 'h2h'" class="space-y-4">
+      <a :href="`#/matchups/${season}/${weekSel}`" class="inline-flex items-center gap-1.5 text-sm text-ink2 hover:text-ink">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        <span x-text="`Week ${weekSel}`"></span>
+      </a>
+
+      <!-- live head-to-head -->
+      <template x-if="h2hLive">
+      <div class="space-y-4">
+        <div class="card !p-5">
+          <div class="flex items-center justify-center gap-2 mb-3"><span class="pill-live"><span class="live-dot"></span>LIVE</span><span class="text-xs text-muted" x-text="liveDayLabel"></span></div>
+          <div class="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+            <template x-for="(s, i) in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+              <div :class="i === 1 ? 'order-3 text-right items-end' : 'items-start'" class="flex flex-col gap-2 min-w-0">
+                <img class="logo w-14 h-14 md:w-16 md:h-16" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+                <div class="font-bold text-[15px] leading-tight w-full truncate" x-text="s.name"></div>
+                <div class="score-xl" x-text="fmt.n(s.pts)"></div>
+                <div class="stat">proj <b x-text="fmt.n(s.proj)"></b> <span x-text="`(${fmt.n(s.p10)}–${fmt.n(s.p90)})`"></span></div>
+                <div class="stat"><b x-text="`${fmt.n(s.gp_used)}/${s.cap}`"></b> games · <b x-text="s.rem_cap"></b> left</div>
+              </div>
+            </template>
+            <div class="order-2 flex flex-col items-center pt-6 gap-1">
+              <div class="label">Win</div>
+              <div class="flex items-center gap-1">
+                <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About win probability">i</button><span class="pop" x-show="o" x-text="glossary.winprob"></span></span>
+              </div>
+            </div>
           </div>
-          <div class="card" x-data="{ tv: false }">
-            <div class="flex items-start justify-between gap-3 mb-2">
-              <div><h3>Final margin, simulated</h3><div class="sub" x-text="`${fmt.n(live.sims)} simulations of the rest of the week. Projected margin ${fmt.signed(selMatchup.proj_margin, 0)} for ${selMatchup.home.name}.`"></div></div>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
-            </div>
-            <div x-show="!tv" class="chart h-64" x-chart="marginChart()"></div>
-            <div x-show="tv" x-html="tableHtml(marginChart())"></div>
+          <div class="flex items-center justify-between text-sm font-bold mt-4 mb-1.5">
+            <span x-text="fmt.pct(h2hLive.home.win_prob, 0)"></span><span x-text="fmt.pct(h2hLive.away.win_prob, 0)"></span>
+          </div>
+          <div class="winbar !h-2.5">
+            <div :style="`width: ${h2hLive.home.win_prob * 100}%; background: ${teamColor(h2hLive.home.team_id)}`"></div>
+            <div :style="`width: ${h2hLive.away.win_prob * 100}%; background: ${teamColor(h2hLive.away.team_id)}`"></div>
           </div>
         </div>
 
-        <div class="grid xl:grid-cols-2 gap-5">
-          <template x-for="(s, i) in [selMatchup.home, selMatchup.away]" :key="s.team_id">
+        <div class="flex items-center justify-between">
+          <div class="label">Rosters</div>
+          <button class="btn-ghost" @click="gridView = !gridView" x-text="gridView ? 'Compact view' : 'Day-by-day grid'"></button>
+        </div>
+        <div class="grid grid-cols-2 gap-3" x-show="!gridView">
+          <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+            <div class="card !p-2.5 md:!p-3">
+              <div class="flex items-center justify-between px-1 pb-1.5 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
+                <span>Player</span><span class="flex gap-3"><span>Wk</span><span class="w-9 text-right">Today</span></span>
+              </div>
+              <template x-for="p in livePlayers(s)" :key="p.id">
+                <div class="flex items-center gap-2 px-1 py-1.5 border-t" style="border-color: var(--grid)">
+                  <img class="hs w-8 h-8 hidden sm:block" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1 text-[13px] font-medium">
+                      <span class="truncate" x-text="lastName(p.name)"></span>
+                      <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[9.5px] font-bold down">OUT</span>
+                      <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[9.5px] font-bold text-muted">DTD</span>
+                    </div>
+                    <div class="text-[10.5px] text-muted truncate" x-text="`${p.pro} · proj ${fmt.n(p.mu)}${p.left ? ` · ${p.left} left` : ''}`"></div>
+                  </div>
+                  <div class="flex gap-3 items-baseline text-[13px] num">
+                    <span class="font-semibold" x-text="p.gp ? fmt.n(p.wk) : '–'"></span>
+                    <span class="w-9 text-right text-ink2" x-text="todayLabel(p) || '·'"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div class="space-y-4" x-show="gridView">
+          <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
             <div class="card">
-              <div class="flex items-center gap-2.5 mb-1">
-                <span class="w-2.5 h-2.5 rounded-sm" :style="`background: var(${i === 0 ? '--s1' : '--s2'})`"></span>
+              <div class="flex items-center gap-2.5 mb-2">
+                <img class="logo w-6 h-6" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
                 <h3 x-text="s.name"></h3>
               </div>
-              <div class="rounded-xl p-3 mb-3 text-xs" style="background: var(--wash)" x-show="s.expected_so_far">
-                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
-                  <span class="font-medium text-ink text-[13px]">So far vs expected</span>
-                  <span class="text-muted" x-text="`${s.expected_so_far?.days_done} days played`"></span>
-                </div>
-                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-ink2">
-                  <span>Expected <b class="text-ink" x-text="fmt.n(s.expected_so_far?.e0)"></b></span>
-                  <template x-for="st in expSteps" :key="st.key">
-                    <span>→ <span x-text="st.label"></span> <b :class="signClass(s.expected_so_far?.[st.key], 5)" x-text="fmt.signed(s.expected_so_far?.[st.key], 0)"></b></span>
-                  </template>
-                  <span>= <b class="text-ink" x-text="fmt.n(s.expected_so_far?.actual)"></b></span>
-                </div>
-                <div class="mt-1.5 text-ink2">
-                  <span class="font-medium text-ink">Hot: </span><span x-text="(s.expected_so_far?.hot || []).filter(p => p.diff > 0).slice(0, 3).map(p => `${p.name} ${fmt.signed(p.diff, 0)}`).join(', ') || '–'"></span>
-                  <span class="ml-2 font-medium text-ink">Cold: </span><span x-text="(s.expected_so_far?.cold || []).filter(p => p.diff < 0).slice(0, 3).map(p => `${p.name} ${fmt.signed(p.diff, 0)}`).join(', ') || '–'"></span>
-                </div>
-                <div class="mt-1 text-muted" x-show="live?.mp <= 2">Early-season weeks usually run a few percent cold against last season's averages.</div>
-              </div>
-              <div class="sub mb-3" x-text="`${fmt.n(s.gp_used)} of ${s.cap} games used · ${s.rem_cap} left · about ${fmt.n(s.avail_games, 1)} playable games remain, ~${fmt.n(s.exp_games, 1)} expected to count`"></div>
               <div class="tbl-wrap">
                 <table class="tbl" style="font-size: 12.5px">
                   <thead><tr>
@@ -213,14 +344,12 @@
                   <tbody>
                     <template x-for="p in s.players" :key="p.id">
                       <tr>
-                        <td>
-                          <div class="flex items-center gap-1.5">
-                            <span class="font-medium" x-text="p.name"></span>
-                            <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="chip !py-0 !px-1.5 down" title="Out">OUT</span>
-                            <span x-show="p.inj === 'DAY_TO_DAY'" class="chip !py-0 !px-1.5" title="Day-to-day">DTD</span>
-                          </div>
-                          <div class="text-[11px] text-muted" x-text="p.pro"></div>
-                        </td>
+                        <td><div class="flex items-center gap-2">
+                          <img class="hs w-6 h-6" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                          <span class="font-medium" x-text="p.name"></span>
+                          <span x-show="p.inj === 'OUT' || p.inj === 'INJURY_RESERVE'" class="text-[10px] font-bold down">OUT</span>
+                          <span x-show="p.inj === 'DAY_TO_DAY'" class="text-[10px] font-bold text-muted">DTD</span>
+                        </div></td>
                         <td class="num text-ink2" x-text="fmt.n(p.mu, 0)"></td>
                         <template x-for="d in p.days" :key="d.sp">
                           <td class="num !px-1.5" :style="cellStyle(d)"
@@ -236,41 +365,129 @@
                   </tbody>
                 </table>
               </div>
-              <div class="text-[11.5px] text-muted mt-2">Numbers = points scored (struck through = didn't count). Shaded % = how often the player starts in the simulations, given the remaining cap.</div>
+            </div>
+          </template>
+          <div class="text-[11.5px] text-muted">Numbers = points (struck through = didn't count). Shaded % = start chance under the remaining cap.</div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="card" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3>Win probability</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-56" x-chart="timelineChart()"></div>
+            <div x-show="tv" x-html="tableHtml(timelineChart())"></div>
+          </div>
+          <div class="card" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3 class="flex items-center gap-1.5">Final margin <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About projections">i</button><span class="pop" x-show="o" x-text="glossary.proj"></span></span></h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-56" x-chart="marginChart()"></div>
+            <div x-show="tv" x-html="tableHtml(marginChart())"></div>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+            <div class="card" x-show="s.expected_so_far">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="flex items-center gap-1.5"><span x-text="s.name"></span> · so far <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.sofar + ' ' + glossary.breakdown"></span></span></h3>
+                <span class="text-[11px] text-muted" x-text="`${s.expected_so_far?.days_done} days`"></span>
+              </div>
+              <div class="grid grid-cols-4 gap-2 text-center">
+                <template x-for="st in [{ key: 'e0', label: 'Expected' }, ...expSteps, { key: 'actual', label: 'Actual' }]" :key="st.key">
+                  <div class="rounded-xl py-2" style="background: var(--wash)">
+                    <div class="text-[10px] text-muted font-semibold uppercase tracking-wide truncate px-1" x-text="st.short || st.label"></div>
+                    <div class="font-bold text-[15px] mt-0.5" :class="['e0', 'actual'].includes(st.key) ? '' : signClass(s.expected_so_far?.[st.key], 5)"
+                         x-text="['e0', 'actual'].includes(st.key) ? fmt.n(s.expected_so_far?.[st.key]) : fmt.signed(s.expected_so_far?.[st.key], 0)"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <details class="card">
+          <summary class="cursor-pointer font-semibold text-sm">How accurate is the predictor?</summary>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 my-4">
+            <div><div class="label">Brier score</div><div class="tile-value mt-1" x-text="backtest?.brier.toFixed(3)"></div><div class="text-xs text-ink2">Coin flip = 0.250</div></div>
+            <div><div class="label">Pregame favorite won</div><div class="tile-value mt-1" x-text="fmt.pct(backtest?.pregame.favorite_won, 0)"></div></div>
+            <div><div class="label">Pregame Brier</div><div class="tile-value mt-1" x-text="backtest?.pregame.brier.toFixed(3)"></div></div>
+            <div><div class="label">Forecasts tested</div><div class="tile-value mt-1" x-text="fmt.n(backtest?.n_forecasts)"></div></div>
+          </div>
+          <div class="grid lg:grid-cols-2 gap-5">
+            <div><div class="font-medium text-sm mb-1">Calibration</div><div class="chart h-56" x-chart="calibChart()"></div></div>
+            <div><div class="font-medium text-sm mb-1">Accuracy by day of the week</div><div class="chart h-56" x-chart="byDayChart()"></div></div>
+          </div>
+        </details>
+      </div>
+      </template>
+
+      <!-- past head-to-head -->
+      <template x-if="h2hPast">
+      <div class="space-y-4">
+        <div class="card !p-5">
+          <div class="flex items-center justify-center gap-2 mb-3"><span class="label">Final</span><span class="text-xs text-muted" x-text="wkDates(weekSel)"></span></div>
+          <div class="grid grid-cols-2 gap-3">
+            <template x-for="(s, i) in [h2hPast.a, h2hPast.b]" :key="s.team_id">
+              <div :class="i === 1 ? 'text-right items-end' : 'items-start'" class="flex flex-col gap-2 min-w-0">
+                <img class="logo w-14 h-14 md:w-16 md:h-16" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+                <div class="font-bold text-[15px] leading-tight w-full truncate" :class="s.result !== 'W' && 'text-ink2'" x-text="tname(s.team_id)"></div>
+                <div class="score-xl" :class="s.result !== 'W' && 'text-muted'" x-text="fmt.n(s.pts)"></div>
+                <div class="stat" x-show="pregameP(season, s.mp, s.team_id) != null">pregame <b x-text="fmt.pct(pregameP(season, s.mp, s.team_id), 0)"></b></div>
+                <div class="stat" x-show="s.e4 != null">at season level <b x-text="fmt.n(s.e4)"></b></div>
+                <div class="stat"><b x-text="`${fmt.n(s.gp)}/${s.cap}`"></b> games · coaching <b x-text="fmt.pct(s.efficiency, 0)"></b></div>
+              </div>
+            </template>
+          </div>
+          <div class="flex flex-wrap justify-center gap-1.5 mt-4" x-show="h2hPast.tags.length">
+            <template x-for="t in h2hPast.tags" :key="t.key">
+              <span class="tag gap-1"><span x-text="t.label"></span>
+                <span class="info-wrap" x-data="{ o: false }" x-show="glossary[t.key]"><button class="info !w-3.5 !h-3.5 !text-[9px] !leading-3" @click.stop="o = !o" @click.outside="o = false" aria-label="What does this mean?">i</button><span class="pop" x-show="o" x-text="glossary[t.key]"></span></span>
+              </span>
+            </template>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <template x-for="s in [h2hPast.a, h2hPast.b]" :key="s.team_id">
+            <div class="card space-y-3">
+              <div class="flex items-center gap-2.5">
+                <img class="logo w-6 h-6" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+                <h3 class="flex items-center gap-1.5"><span x-text="tname(s.team_id)"></span>
+                  <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.breakdown"></span></span></h3>
+              </div>
+              <div class="chart h-56" x-show="s.e0 != null" x-chart="waterfallChartFor(s)"></div>
+              <div>
+                <div class="label mb-1">Hot &amp; cold</div>
+                <template x-for="p in [...(s.hot || []).filter(p => p.diff > 0), ...(s.cold || []).filter(p => p.diff < 0)]" :key="p.name">
+                  <div class="flex items-center gap-2.5 py-1.5 border-t text-[13px]" style="border-color: var(--grid)">
+                    <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                    <span class="flex-1 truncate font-medium" x-text="p.name"></span>
+                    <span class="text-muted text-[11.5px]" x-text="`${fmt.n(p.pts)} pts`"></span>
+                    <span class="w-12 text-right font-semibold" :class="p.diff > 0 ? 'up' : 'down'" x-text="fmt.signed(p.diff, 0)"></span>
+                  </div>
+                </template>
+              </div>
+              <div x-show="(s.missed_starts || []).length">
+                <div class="label mb-1">Left on the bench</div>
+                <template x-for="p in s.missed_starts || []" :key="p.name + p.sp">
+                  <div class="flex items-center gap-2.5 py-1.5 border-t text-[13px]" style="border-color: var(--grid)">
+                    <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                    <span class="flex-1 truncate" x-text="p.name"></span>
+                    <span class="font-semibold" x-text="fmt.n(p.pts)"></span>
+                  </div>
+                </template>
+              </div>
             </div>
           </template>
         </div>
       </div>
       </template>
 
-      <div class="card" x-show="backtest">
-        <h3>How accurate is the predictor?</h3>
-        <div class="sub mb-4" x-text="`Replayed every regular-season matchup from ${backtest ? backtest.seasons.map(fmt.seasonLabel).join(', ') : ''}, forecasting from the start of each day with only what was known at the time.`"></div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <div><div class="label">Brier score</div><div class="tile-value mt-1" x-text="backtest?.brier.toFixed(3)"></div><div class="text-xs text-ink2">Lower is better. Coin flip = 0.250</div></div>
-          <div><div class="label">Pregame favorite won</div><div class="tile-value mt-1" x-text="fmt.pct(backtest?.pregame.favorite_won, 0)"></div><div class="text-xs text-ink2">Forecast before the week starts</div></div>
-          <div><div class="label">Pregame Brier</div><div class="tile-value mt-1" x-text="backtest?.pregame.brier.toFixed(3)"></div><div class="text-xs text-ink2">Before any games are played</div></div>
-          <div><div class="label">Forecasts tested</div><div class="tile-value mt-1" x-text="fmt.n(backtest?.n_forecasts)"></div><div class="text-xs text-ink2" x-text="`${fmt.n(backtest?.n_matchups)} matchups`"></div></div>
-        </div>
-        <div class="grid lg:grid-cols-2 gap-5">
-          <div x-data="{ tv: false }">
-            <div class="flex items-start justify-between gap-3 mb-2">
-              <div><div class="font-medium text-sm">Calibration</div><div class="sub">When it says 70%, does that team win about 70% of the time?</div></div>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
-            </div>
-            <div x-show="!tv" class="chart h-64" x-chart="calibChart()"></div>
-            <div x-show="tv" x-html="tableHtml(calibChart())"></div>
-          </div>
-          <div x-data="{ tv: false }">
-            <div class="flex items-start justify-between gap-3 mb-2">
-              <div><div class="font-medium text-sm">Accuracy by day of the week</div><div class="sub">Forecasts sharpen as games get played and the cap gets used.</div></div>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
-            </div>
-            <div x-show="!tv" class="chart h-64" x-chart="byDayChart()"></div>
-            <div x-show="tv" x-html="tableHtml(byDayChart())"></div>
-          </div>
-        </div>
-      </div>
+      <div class="card text-sm text-ink2" x-show="!h2hLive && !h2hPast">That matchup isn't available.</div>
     </section>
 
     <!-- ============ STANDINGS ============ -->
@@ -842,11 +1059,16 @@
   </div>
   </template>
 
-  <footer class="text-xs text-muted pt-2 pb-8">Data from ESPN Fantasy. Built from daily lineups; refreshed automatically.</footer>
+  <footer class="text-xs text-muted pt-2">Data from ESPN Fantasy · refreshed automatically.</footer>
+</div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-<script src="app.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/core.js"></script>
+<script src="js/legacy.js"></script>
+<script src="js/matchups.js"></script>
+<script src="js/app.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>

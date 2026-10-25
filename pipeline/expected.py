@@ -121,7 +121,7 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None):
 
 
 def top_players(players, n=3):
-    fmt = lambda df: [{"name": r.name, "games": int(r.games), "pts": float(r.pts), "exp": float(r.exp),
+    fmt = lambda df: [{"id": int(r.player_id), "name": r.name, "games": int(r.games), "pts": float(r.pts), "exp": float(r.exp),
                        "lvl": float(r.lvl), "diff": float(r.diff)} for r in df.itertuples()]
     return fmt(players.nlargest(n, "diff")), fmt(players.nsmallest(n, "diff"))
 
