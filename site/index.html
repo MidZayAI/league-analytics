@@ -224,6 +224,9 @@
               <div :style="`width: ${m.home.win_prob * 100}%; background: ${teamColor(m.home.team_id)}`"></div>
               <div :style="`width: ${m.away.win_prob * 100}%; background: ${teamColor(m.away.team_id)}`"></div>
             </div>
+            <div class="grid grid-cols-2 gap-3 mt-2 text-[11px] text-muted" x-show="odds?.season === live?.season && oddsFor(m.home.team_id)">
+              <span class="truncate" x-text="stakesLine(m.home.team_id)"></span><span class="truncate text-right" x-text="stakesLine(m.away.team_id)"></span>
+            </div>
             <div class="flex items-center justify-between gap-3 mt-3 text-[12px] text-ink2" x-data="{ hc: [...(m.home.expected_so_far?.hot || []), ...(m.away.expected_so_far?.hot || [])].sort((a, b) => b.diff - a.diff)[0],
                                                                                      cc: [...(m.home.expected_so_far?.cold || []), ...(m.away.expected_so_far?.cold || [])].sort((a, b) => a.diff - b.diff)[0] }">
               <div class="flex items-center gap-2 min-w-0" x-show="hc && hc.diff > 0">
@@ -296,6 +299,33 @@
           <div class="winbar !h-2.5">
             <div :style="`width: ${h2hLive.home.win_prob * 100}%; background: ${teamColor(h2hLive.home.team_id)}`"></div>
             <div :style="`width: ${h2hLive.away.win_prob * 100}%; background: ${teamColor(h2hLive.away.team_id)}`"></div>
+          </div>
+        </div>
+
+        <div class="card" x-show="odds?.season === live?.season && (oddsFor(h2hLive.home.team_id) || oddsFor(h2hLive.away.team_id))">
+          <h3 class="flex items-center gap-1.5 mb-3">What&rsquo;s at stake
+            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the stakes">i</button><span class="pop" x-show="o" x-text="glossary.stakes"></span></span></h3>
+          <div class="grid grid-cols-2 gap-4">
+            <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-2">
+                  <img class="logo w-6 h-6" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+                  <span class="text-sm font-semibold truncate" x-text="s.name"></span>
+                </div>
+                <div class="grid grid-cols-[auto_1fr_1fr_1fr] gap-x-2 gap-y-1 text-[12.5px] items-baseline">
+                  <span></span><span class="label text-right">Now</span><span class="label text-right">Win</span><span class="label text-right">Lose</span>
+                  <template x-for="k in ['playoff', 'bye', 'title']" :key="k">
+                    <div class="contents">
+                      <span class="text-ink2" x-text="k === 'playoff' ? 'Playoffs' : k === 'bye' ? 'Bye' : 'Title'"></span>
+                      <span class="num text-right font-semibold" x-text="oddsPct(oddsFor(s.team_id)?.[k], k === 'playoff' ? oddsFor(s.team_id)?.clinched_playoffs : k === 'bye' && oddsFor(s.team_id)?.clinched_bye, oddsFor(s.team_id)?.eliminated)"></span>
+                      <span class="num text-right up" x-text="stakesOf(s.team_id) ? oddsPct(stakesOf(s.team_id)[k + '_w']) : '–'"></span>
+                      <span class="num text-right down" x-text="stakesOf(s.team_id) ? oddsPct(stakesOf(s.team_id)[k + '_l']) : '–'"></span>
+                    </div>
+                  </template>
+                </div>
+                <div class="text-[11px] text-muted mt-1.5" x-show="!stakesOf(s.team_id)">This week&rsquo;s result is all but decided.</div>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -584,6 +614,52 @@
               <div class="text-[12px] font-semibold mt-0.5" :class="rankClass(r)" x-text="`#${r.rank} of ${r.of}`"></div>
             </div>
           </template>
+        </div>
+
+        <template x-if="season === odds?.season && oddsFor(T.team_id)">
+        <div class="grid grid-cols-3 gap-3">
+          <template x-for="k in ['playoff', 'bye', 'title']" :key="k">
+            <div class="card !py-3 !px-4">
+              <div class="flex items-center justify-between gap-1">
+                <span class="label" x-text="k === 'playoff' ? 'Playoff odds' : k === 'bye' ? 'Bye odds' : 'Title odds'"></span>
+                <span class="info-wrap" x-data="{ o: false }" x-show="k === 'playoff'"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How the odds work">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.odds"></span></span>
+              </div>
+              <div class="text-[24px] font-extrabold tracking-tight mt-1" x-text="oddsPct(oddsFor(T.team_id)[k], k === 'playoff' ? oddsFor(T.team_id).clinched_playoffs : k === 'bye' && oddsFor(T.team_id).clinched_bye, oddsFor(T.team_id).eliminated)"></div>
+              <div class="text-[12px] font-semibold mt-0.5" :class="(oddsDelta(T.team_id, k) || 0) > 0.005 ? 'up' : (oddsDelta(T.team_id, k) || 0) < -0.005 ? 'down' : 'text-muted'"
+                   x-text="oddsDelta(T.team_id, k) == null ? 'vs last week: –' : `${oddsDelta(T.team_id, k) > 0.005 ? '▲' : oddsDelta(T.team_id, k) < -0.005 ? '▼' : ''} ${fmt.signed(oddsDelta(T.team_id, k) * 100, 0)} pts vs last week`"></div>
+            </div>
+          </template>
+        </div>
+        </template>
+
+        <div class="grid lg:grid-cols-5 gap-4" x-show="oddsSeries(T.team_id)">
+          <div class="card" :class="season === odds?.season ? 'lg:col-span-3' : 'lg:col-span-5'" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3>Odds over the season</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div x-show="!tv" class="chart h-56" x-chart="oddsChart()"></div>
+            <div x-show="tv" x-html="tableHtml(oddsChart())"></div>
+          </div>
+          <div class="card lg:col-span-2" x-show="season === odds?.season">
+            <h3 class="flex items-center gap-1.5">Rooting guide
+              <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the rooting guide">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.rooting"></span></span></h3>
+            <div class="sub mb-2">Other games this week, by how much they move your odds.</div>
+            <template x-for="g in rootingFor(T.team_id)" :key="g.a + '-' + g.b">
+              <div class="flex items-center gap-2.5 py-2 border-t" style="border-color: var(--grid)">
+                <img class="logo w-8 h-8" :src="logoOf(g.root_for)" :style="`--ring: ${teamColor(g.root_for)}`" alt="" @error="$el.src = avatarOf(g.root_for)">
+                <div class="min-w-0 flex-1">
+                  <div class="text-sm font-semibold truncate" x-text="`Root for ${tname(g.root_for)}`"></div>
+                  <div class="text-[11.5px] text-muted truncate" x-text="`over ${tname(g.other)}`"></div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="text-sm font-bold up" x-text="`+${fmt.n(g.playoff_swing * 100, 0)} pts`"></div>
+                  <div class="text-[10.5px] text-muted" x-text="g.title_swing >= 0.005 ? `title +${fmt.n(g.title_swing * 100, 0)}` : 'playoff odds'"></div>
+                </div>
+              </div>
+            </template>
+            <div class="text-sm text-muted py-2" x-show="!rootingFor(T.team_id).length">No other open games this week move your odds much.</div>
+          </div>
         </div>
 
         <a x-show="teamLive" class="game flex items-center gap-3" :href="teamLive ? matchupHref(teamLive.matchup_id, live.mp) : '#'">
@@ -1410,13 +1486,13 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=ee12744f99"></script>
+<script src="js/core.js?v=6839af269d"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=36ad5d5917"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>
-<script src="js/odds.js?v=963d37dfc7"></script>
+<script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/app.js?v=d886257be9"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
