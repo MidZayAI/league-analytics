@@ -421,7 +421,7 @@
             <div class="card" x-show="s.expected_so_far">
               <div class="flex items-center justify-between mb-2">
                 <h3 class="flex items-center gap-1.5"><span x-text="s.name"></span> · so far <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.sofar + ' ' + glossary.breakdown"></span></span></h3>
-                <span class="text-[11px] text-muted" x-text="`${s.expected_so_far?.days_done} days`"></span>
+                <span class="text-[11px] text-muted" x-text="`${s.expected_so_far?.days_done} days` + (s.expected_so_far?.today_final_games ? ' + finished games today' : '') + ' · live games added when final'"></span>
               </div>
               <div class="grid grid-cols-4 gap-2 text-center">
                 <template x-for="st in [{ key: 'e0', label: 'Expected' }, ...expSteps, { key: 'actual', label: 'Actual' }]" :key="st.key">

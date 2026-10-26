@@ -208,12 +208,16 @@ def main():
                         hit = cands[(cands.player_id == g["id"]) & (cands.sp == d["sp"])]
                         d["start"] = float(hit.start.iloc[0]) if len(hit) else 0.0
             final = cur + sims
+            # finished days + today's games that are already final (in-progress games stay out)
+            final_today = {pro for pro, g in games_now.items() if g["state"] == "post"}
+            res = expected.week_breakdown(exp_ctx, tid, int(mp), week, int(cap_row.cap), rng,
+                                          done_days + [sp_now], (sp_now, final_today))
             so_far = None
-            if done_days:
-                res = expected.week_breakdown(exp_ctx, tid, int(mp), week, int(cap_row.cap), rng, done_days)
-                if res:
-                    so_far, players = res
-                    so_far["hot"], so_far["cold"] = expected.top_players(players)
+            if res and (done_days or final_today):
+                so_far, players = res
+                so_far["hot"], so_far["cold"] = expected.top_players(players)
+                so_far["days_done"] = len(done_days)
+                so_far["today_final_games"] = sum(1 for g in games_now.values() if g["state"] == "post") // 2
             sides.append({"team_id": tid, "name": names.get(tid), "pts": cur, "gp_used": gp_used,
                           "cap": int(cap_row.cap), "rem_cap": rem_cap,
                           "avail_games": float(cands.p.sum()), "exp_games": float(games.mean()),

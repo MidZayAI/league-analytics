@@ -61,9 +61,11 @@ class SeasonContext:
         return self._raw[day]
 
 
-def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None):
+def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_day=None):
     """Breakdown for one team-week. done_days limits it to the days played so far (live view);
-    then E1/E2 get the same number of games the team has actually used so far."""
+    then E1/E2 get the same number of games the team has actually used so far.
+    partial_day=(sp, pro_team_ids): on that day (today) only games of those NBA teams count, i.e.
+    games that are final; games still in progress stay out so half a game isn't judged as a whole one."""
     td = ctx.by_team_mp.get((tid, mp))
     if td is None or td.empty:
         return None
@@ -78,6 +80,11 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None):
     mu, p = est.mu.to_dict(), est.p.to_dict()
 
     done = list(week_days if done_days is None else done_days)
+
+    def keep(sp, pro):
+        return partial_day is None or sp != partial_day[0] or pro in partial_day[1]
+
+    td = td[[keep(sp, pro) for sp, pro in zip(td.sp, td.pro)]]
     counted = td[td.counted & td.sp.isin(done)]
     cap_eff = cap if done_days is None else int(counted.gp.sum())
 
@@ -85,16 +92,18 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None):
         return pd.DataFrame(rows, columns=["sp", "mu", "p", "player_id"])
 
     # E0: pregame, whole week; per-day expectation lets the live view take just the days played
-    c0 = cands([(sp, mu[r.player_id], p[r.player_id], r.player_id)
-                for r in roster0.itertuples() for sp in week_days if r.pro in ctx.games.get(sp, ())])
+    c0 = pd.DataFrame([(sp, mu[r.player_id], p[r.player_id], r.player_id, r.pro)
+                       for r in roster0.itertuples() for sp in week_days if r.pro in ctx.games.get(sp, ())],
+                      columns=["sp", "mu", "p", "player_id", "pro"])
     _, s0 = expected_value(c0, cap, E0_SIMS, rng)
-    e0 = float((c0.mu * s0)[c0.sp.isin(done)].sum()) if len(c0) else 0.0
+    in_scope = [sp in done and keep(sp, pro) for sp, pro in zip(c0.sp, c0.pro)]
+    e0 = float((c0.mu * s0)[in_scope].sum()) if len(c0) else 0.0
 
     # E1: week-start roster with real availability (unknown after a drop to free agency -> p)
     rows = []
     for r in roster0.itertuples():
         for sp in done:
-            if r.pro in ctx.games.get(sp, ()):
+            if r.pro in ctx.games.get(sp, ()) and keep(sp, r.pro):
                 gp = ctx.played.get((sp, r.player_id))
                 rows.append((sp, mu[r.player_id], p[r.player_id] if gp is None else float(gp > 0), r.player_id))
     e1, _ = expected_value(cands(rows), cap_eff, E1_SIMS, rng)
