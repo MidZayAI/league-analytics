@@ -14,6 +14,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expected  # noqa: E402
+import season_sim  # noqa: E402
 import projections as pj  # noqa: E402
 from espn_client import ESPNClient, ROOT  # noqa: E402
 from normalize import RAW, cached_seasons, load_season  # noqa: E402
@@ -87,6 +88,49 @@ def play_chance(status, days_ahead, base):
     return base
 
 
+ODDS_OUT = ROOT / "site" / "data" / "odds.json"
+
+
+def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng):
+    """Season simulation from now: playoff / bye / title odds, stakes, rooting guide, clinch flags."""
+    reg, rounds, n_po = season_sim.league_format(CURRENT, t)
+    caps = t["caps"].set_index("mp")
+    m = t["matchups"]
+    g = m[m.mp.isin(reg) & m.opp_id.notna() & (m.team_id < m.opp_id)]
+    done = [(int(r.team_id), int(r.opp_id), float(r.pts), float(r.opp_pts)) for r in g.itertuples() if r.mp < mp and r.result]
+    future = [(int(r.mp), int(r.team_id), int(r.opp_id)) for r in g.itertuples() if r.mp >= mp]
+    teams = sorted(team_out)
+    players = {tid: team_out[tid]["model_players"] for tid in teams}
+    later = sorted({f[0] for f in future if f[0] > mp}) + [r for r in rounds if r in caps.index]
+    exp = season_sim.expected_scores(players, later, caps, t["pro_games"], sp_now, rng, play_chance)
+    params = {**season_sim.DEFAULTS, **{k: pj.PARAMS[k] for k in ("week_cv", "odds_drift", "odds_shrink") if k in pj.PARAMS}}
+    out = season_sim.simulate(teams, done, future, exp, [r for r in rounds if r in caps.index], n_po, params, SIMS, rng,
+                              current={"mp": mp, "draws": cur_draws} if cur_draws else None)
+    res = season_sim.summarize(teams, out, n_po, None)
+
+    wins_now = {tid: 0 for tid in teams}
+    losses_now = {tid: 0 for tid in teams}
+    for a, b, pa, pb in done:
+        if pa != pb:
+            wins_now[a if pa > pb else b] += 1
+            losses_now[b if pa > pb else a] += 1
+    left = {tid: sum(1 for _, a, b in future if tid in (a, b)) for tid in teams}
+    flags = season_sim.clinch_flags(teams, wins_now, left, n_po)
+    for r in res:
+        r.update(flags[r["team_id"]], w=wins_now[r["team_id"]], l=losses_now[r["team_id"]], name=names.get(r["team_id"]))
+
+    hist_path = SNAP_DIR / f"odds_{CURRENT}.json"
+    hist = json.loads(hist_path.read_text(encoding="utf-8")) if hist_path.exists() else {}
+    hist[str(mp)] = {str(r["team_id"]): {k: round(r[k], 4) for k in ("playoff", "bye", "title")} for r in res}
+    hist_path.write_text(json.dumps(hist, separators=(",", ":")), encoding="utf-8")
+
+    ODDS_OUT.write_text(json.dumps({
+        "season": CURRENT, "mp": mp, "sp_now": sp_now, "n_playoff": n_po, "sims": SIMS, "params": params,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "teams": res,
+    }, default=float, separators=(",", ":")), encoding="utf-8")
+    print("odds: " + ", ".join(f"{r['name']} {r['playoff']:.0%}/{r['title']:.0%}" for r in sorted(res, key=lambda r: -r["title"])))
+
+
 def histogram(values, bins=40):
     counts, edges = np.histogram(values, bins=bins)
     return {"edges": [round(float(e), 1) for e in edges], "counts": counts.tolist()}
@@ -129,7 +173,7 @@ def main():
     team_out = {}
     for team in roster["teams"]:
         tid = team["id"]
-        rows, grid, in_progress = [], [], []
+        rows, grid, in_progress, model_players = [], [], [], []
         for e in team["roster"]["entries"]:
             pl = e["playerPoolEntry"]["player"]
             pid, pro = pl["id"], pl.get("proTeamId")
@@ -177,15 +221,16 @@ def main():
                     days.append({"sp": sp, "state": "game", "p": p})
                 else:
                     days.append({"sp": sp, "state": "none"})
+            model_players.append((pro, mu, base, inj))
             grid.append({"id": pid, "name": pl.get("fullName"), "pro": abbrev.get(pro, ""), "inj": inj,
                          "slot": e.get("lineupSlotId"), "mu": mu, "days": days})
 
         cands = pd.DataFrame(rows, columns=["sp", "mu", "sd", "p", "player_id"])
-        team_out[tid] = {"cands": cands, "grid": grid, "in_progress": in_progress}
+        team_out[tid] = {"cands": cands, "grid": grid, "in_progress": in_progress, "model_players": model_players}
 
     snaps_path = SNAP_DIR / f"winprob_{CURRENT}.json"
     snaps = json.loads(snaps_path.read_text(encoding="utf-8")) if snaps_path.exists() else []
-    matchups, snap = [], {}
+    matchups, snap, cur_draws = [], {}, {}
     for m in league["schedule"]:
         if m.get("matchupPeriodId") != mp or not m.get("away"):
             continue
@@ -226,6 +271,7 @@ def main():
                           "players": sorted(team_out[tid]["grid"], key=lambda g: -g["mu"])})
         a, b = sides
         fa, fb = a.pop("_final"), b.pop("_final")
+        cur_draws[a["team_id"]], cur_draws[b["team_id"]] = fa, fb
         pa = win_prob(a["pts"], fa - a["pts"], b["pts"], fb - b["pts"])
         a["win_prob"], b["win_prob"] = pa, 1 - pa
         matchups.append({"matchup_id": m["id"], "home": a, "away": b,
@@ -250,6 +296,7 @@ def main():
         "snapshots": [s for s in snaps if s["mp"] == mp],
     }
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
+    write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng)
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 

@@ -47,6 +47,26 @@ def clean(o):
     return o
 
 
+def write_odds_history():
+    """Playoff/bye/title odds week by week: past seasons from the odds backtest, the current
+    season from the live snapshots (data/history/odds_{season}.json, one point per week)."""
+    out = {}
+    bt = SITE_DATA / "odds_backtest.json"
+    if bt.exists():
+        out.update(json.loads(bt.read_text(encoding="utf-8")).get("history", {}))
+    live = ROOT / "data" / "history" / f"odds_{CURRENT}.json"
+    if live.exists():
+        cur = {}
+        for mp, teams in sorted(json.loads(live.read_text(encoding="utf-8")).items(), key=lambda x: int(x[0])):
+            for tid, o in teams.items():
+                h = cur.setdefault(tid, {"after": [], "playoff": [], "bye": [], "title": []})
+                h["after"].append(int(mp))
+                for k in ("playoff", "bye", "title"):
+                    h[k].append(o[k])
+        out[str(CURRENT)] = cur
+    write("odds_history.json", out)
+
+
 def stamp_assets():
     """Add ?v=<content hash> to the page's local script tags so browsers never pair a new page
     with stale cached scripts (GitHub Pages lets browsers cache files for ~10 minutes)."""
@@ -198,12 +218,14 @@ def main():
         "latest_sp": int(cur["daily"].sp.max()) if not cur["daily"].empty else None,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
+    write_odds_history()
     stamp_assets()
     print(f"wrote {len(seasons) + 2} files to {SITE_DATA}")
 
     if CURRENT in built and not built[CURRENT][0]["complete"]:
         import live
         live.main()
+        write_odds_history()  # include the point the live run just recorded
 
 
 if __name__ == "__main__":

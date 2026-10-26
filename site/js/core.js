@@ -12,6 +12,8 @@ const GLOSSARY = {
   coachloss: 'Coaching loss: the team\'s own best possible lineup (same players, same cap) would have won.',
   breakdown: 'Pregame expected → availability (who played) → roster moves → lineup & cap → breakouts (season level vs. expectation) → hot/cold (week-to-week swings). Always adds up to the real score.',
   sofar: 'The same breakdown for the days played so far this week.',
+  odds: '10,000 simulations of the rest of the season: every remaining game played from each roster’s projected strength, this week’s game from the live forecast, then the playoff bracket. Ties in the standings use head-to-head record, then points for. Clinched/Eliminated are exact math, not simulations.',
+  seedgrid: 'Chance of finishing at each seed. Darker = more likely. Seeds 1-2 get a first-round bye; 1-6 make the playoffs.',
   playerproj: 'PTS = points that counted so far this week. EXP = what the model expected from those same games (his projected average per game; a game in progress counts in proportion to how much has been played). Green = beating it, red = below. "~N more" = expected points still to come (rest of a live game + upcoming starts under the cap).',
 };
 
@@ -29,7 +31,7 @@ const SECTIONS = [
 ];
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
-  { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' },
+  { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' }, { id: 'odds', label: 'Playoff odds' },
 ];
 const OLD_PAGES = { week: 'matchups', standings: 'league/standings', luck: 'league/luck', expected: 'league/expected',
                     coaching: 'league/coaching', cap: 'league/cap', franchises: 'history' };
@@ -61,6 +63,7 @@ window.Core = {
     }
     this.loading = false;
     await this.route();
+    this.loadOdds();
     // keep "updated X min ago" current, and pick up new refreshes without a reload
     setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
     setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
@@ -81,6 +84,7 @@ window.Core = {
       this._pregame = null;
       this.meta = m;
       if (followLive && this.live?.active) this.weekSel = this.live.mp;
+      this.loadOdds();
     } catch (e) { /* offline or mid-deploy: try again next tick */ }
   },
   ago(iso) {

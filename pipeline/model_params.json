@@ -3,5 +3,8 @@
   "r": 0.0,
   "p_base": 0.8,
   "p_k": 4.0,
-  "team_sd": 0.08
+  "team_sd": 0.08,
+  "week_cv": 0.14887508825164855,
+  "odds_drift": 0.02,
+  "odds_shrink": 0.8
 }
