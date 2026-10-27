@@ -7,6 +7,6 @@ function mixin(...parts) {
 }
 
 document.addEventListener('alpine:init', () => {
-  Alpine.data('app', () => mixin(window.Core, window.Legacy, window.Matchups, window.Teams, window.League, window.History, window.Odds));
+  Alpine.data('app', () => mixin(window.Core, window.Legacy, window.Matchups, window.Teams, window.League, window.History, window.Odds, window.Injuries));
 });
 

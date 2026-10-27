@@ -90,7 +90,7 @@ class InjuryAvailability:
         nba_logs.fetch_season(CURRENT)
         self.dates, self.curve = dates, pj.PARAMS.get("return_curve")
         today = dates[sp_now].isoformat()
-        cache = ROOT / "data" / "tidy" / f"injstate_{CURRENT}_{today}.pkl"
+        cache = ROOT / "data" / "tidy" / f"injstate_v2_{CURRENT}_{today}.pkl"  # bump v when InjuryState changes
         if cache.exists():
             self.state = pd.read_pickle(cache)
         else:
@@ -147,6 +147,62 @@ def play_chance(status, days_ahead, base):
 
 
 ODDS_OUT = ROOT / "site" / "data" / "odds.json"
+INJ_OUT = ROOT / "site" / "data" / "injuries.json"
+MIN_FP_SHOWN = 25.0      # injured players shown: 25+ FP/game, or on a league roster
+MIN_BUMP_SHOWN = 0.75    # beneficiaries shown: model boost of 0.75+ FP/game while he sits
+
+
+def write_injuries(avail, roster, abbrev, sp_now):
+    """Injury report for the site: every relevant injured NBA player, who benefits, free-agent pickups."""
+    st = avail.state
+    owner = {e["playerId"]: tm["id"] for tm in roster["teams"] for e in tm["roster"]["entries"]}
+    pro_of = {e["playerId"]: e["playerPoolEntry"]["player"].get("proTeamId") for tm in roster["teams"] for e in tm["roster"]["entries"]}
+    is_out = lambda a: (avail.feed.get(a) or {}).get("status") == "Out" or avail.tags.get(a) in ("OUT", "INJURY_RESERVE")
+    helps = {}
+    for t_aid, lst in st.bumps.items():
+        for k_aid, b in lst:
+            helps.setdefault(k_aid, []).append((t_aid, b))
+    injured = {aid: f for aid, f in avail.feed.items()}
+    for aid, tag in avail.tags.items():  # league tags not (yet) in the NBA report
+        if tag in ("OUT", "INJURY_RESERVE", "DAY_TO_DAY") and aid not in injured:
+            injured[aid] = {"status": "Out" if tag != "DAY_TO_DAY" else "Day-To-Day", "return": None}
+
+    def next_game(pro):
+        sps = sorted(sp for (q, sp), h in avail.game_no.items() if q == pro)
+        return sps[0] if sps else None
+
+    players, pickups = [], []
+    for aid, f in injured.items():
+        fp, pro = st.fp.get(aid, 0.0), st.team.get(aid) or pro_of.get(aid)
+        if fp < MIN_FP_SHOWN and aid not in owner:
+            continue
+        sp = next_game(pro) if pro else None
+        p_next = avail.p_play(aid, 1 - st.sit_base(aid), None, pro, sp) if sp else None
+        sit_more = max(0.0, (1 - p_next) - st.sit_base(aid)) if p_next is not None else 1.0
+        bens = []
+        for t_aid, b in sorted(helps.get(aid, []), key=lambda x: -x[1]):
+            if b < MIN_BUMP_SHOWN or is_out(t_aid):  # an injured teammate can't absorb minutes
+                continue
+            ev = st.evidence.get((aid, t_aid), {})
+            row = {"id": t_aid, "name": st.name.get(t_aid), "pos": st.pos.get(t_aid), "owner": owner.get(t_aid),
+                   "bump": round(b, 1), "fp": round(st.fp.get(t_aid, 0.0), 1), "n": ev.get("n"),
+                   "min_in": ev.get("min_in"), "min_out": ev.get("min_out"), "season": ev.get("season")}
+            bens.append(row)
+            if owner.get(t_aid) is None:
+                pickups.append({**row, "because": st.name.get(aid), "because_id": aid,
+                                "next": round(b * sit_more, 1)})
+        players.append({"id": aid, "name": st.name.get(aid), "team": abbrev.get(pro, ""), "pos": st.pos.get(aid),
+                        "status": f["status"], "return": f.get("return"), "streak": st.streak.get(aid, 0),
+                        "fp": round(fp, 1), "owner": owner.get(aid), "p_next": p_next, "helps": bens[:5]})
+    players.sort(key=lambda r: (r["owner"] is None, -r["fp"]))
+    best = {}
+    for pk in sorted(pickups, key=lambda r: -r["next"]):
+        best.setdefault(pk["id"], pk)  # one entry per free agent, his biggest reason
+    INJ_OUT.write_text(json.dumps({
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "players": players, "pickups": [x for x in best.values() if x["next"] >= 0.5][:8],
+    }, default=float, separators=(",", ":")), encoding="utf-8")
+    print(f"injuries: {len(players)} injured players shown, {len(best)} free-agent beneficiaries")
 
 
 def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
@@ -363,6 +419,7 @@ def main():
     }
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
     write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail)
+    write_injuries(avail, roster, abbrev, sp_now)
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 

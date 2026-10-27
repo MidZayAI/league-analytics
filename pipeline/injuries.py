@@ -111,8 +111,19 @@ class InjuryState:
             self.streak[aid] = k
             self.sit[aid] = (1 - n_mine / n_span) if n_span >= 5 else DEFAULT_SIT
         self.bumps = {}  # T -> [(K, scaled bump)]
+        self.evidence = {}  # (K, T) -> with/without split behind the bump
+        # season FP per game (this season if he has 5+ games, else last season) for the injury page
+        both = pg[pg.date < as_of]
+        cur_fp = both[both.season == season].groupby("aid").fp.agg(["mean", "size"])
+        prev_fp = both[both.season == season - 1].groupby("aid").fp.mean()
+        self.fp = {int(a): float(r["mean"]) for a, r in cur_fp.iterrows() if r["size"] >= 5}
+        for a, v in prev_fp.items():
+            self.fp.setdefault(int(a), float(v))
+        self.pos = both.groupby("aid").grp.first().to_dict()
+        for a, n in both.groupby("aid").name.first().items():
+            self.name.setdefault(a, n)
         if bumps_from is not None:
-            self.bumps = bumps_from.bumps
+            self.bumps, self.evidence = bumps_from.bumps, bumps_from.evidence
         elif with_bumps:
             pairs = u.fit_pairs(hist, before=as_of, season_weights={season: 1.0, season - 1: PREV_SEASON_WEIGHT})
             if len(pairs):
@@ -120,9 +131,16 @@ class InjuryState:
                 sh = u.shrunk(pairs, prior, KAPPA)
                 sh = sh.assign(wt=(sh.n_out * sh.w_season).clip(lower=0.5))
                 comb = sh.groupby(["k", "t"]).apply(lambda g: np.average(g.bump, weights=g.wt), include_groups=False)
+                # evidence shown on the injury page: the most informative season's split for each pair
+                best_row = sh.loc[sh.groupby(["k", "t"]).wt.idxmax()].set_index(["k", "t"])
+                self.evidence = {}
                 for (k_aid, t_aid), b in comb.items():
                     if b > 0 and self.team.get(k_aid) is not None and self.team.get(k_aid) == self.team.get(t_aid):
                         self.bumps.setdefault(int(t_aid), []).append((int(k_aid), BUMP_SCALE * float(b)))
+                        r = best_row.loc[(k_aid, t_aid)]
+                        self.evidence[(int(k_aid), int(t_aid))] = {
+                            "n": int(r.n_out), "season": int(r.season), "raw": float(r.raw),
+                            "min_in": float(r.t_min_in), "min_out": None if pd.isna(r.min_out) else float(r.min_out)}
 
     def sit_base(self, aid):
         return self.sit.get(aid, DEFAULT_SIT)

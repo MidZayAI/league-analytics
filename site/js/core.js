@@ -67,6 +67,7 @@ window.Core = {
     this.loading = false;
     await this.route();
     this.loadOdds();
+    this.loadInjuries();
     // keep "updated X min ago" current, and pick up new refreshes without a reload
     setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
     setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
@@ -88,6 +89,7 @@ window.Core = {
       this.meta = m;
       if (followLive && this.live?.active) this.weekSel = this.live.mp;
       this.loadOdds();
+      this.loadInjuries();
     } catch (e) { /* offline or mid-deploy: try again next tick */ }
   },
   ago(iso) {
@@ -113,6 +115,8 @@ window.Core = {
       const target = a ? +a : (this.live?.active ? this.live.season : this.season);
       if (target !== this.season) await this.selectSeason(target);
       Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
+    } else if (sec === 'injuries') {
+      Object.assign(this, { section: 'matchups', page: 'injuries' });
     } else if (sec === 'league') {
       await this.seasonWithResults();
       this.section = 'league';
