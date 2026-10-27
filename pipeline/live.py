@@ -14,6 +14,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expected  # noqa: E402
+import injuries  # noqa: E402
+import nba_logs  # noqa: E402
 import season_sim  # noqa: E402
 import projections as pj  # noqa: E402
 from espn_client import ESPNClient, ROOT  # noqa: E402
@@ -78,6 +80,62 @@ def nba_game_status(day):
     return out
 
 
+class InjuryAvailability:
+    """Chance to play + teammate usage bump for any player's future game (live).
+    Uses the league's injury tags, ESPN's NBA injury feed (status + expected return date), each
+    player's current miss streak and the historical return curve (injuries.py)."""
+
+    def __init__(self, roster, dates, sp_now, starts, pro_games, now):
+        nba_logs.fetch_season(CURRENT - 1)
+        nba_logs.fetch_season(CURRENT)
+        self.dates, self.curve = dates, pj.PARAMS.get("return_curve")
+        today = dates[sp_now].isoformat()
+        cache = ROOT / "data" / "tidy" / f"injstate_{CURRENT}_{today}.pkl"
+        if cache.exists():
+            self.state = pd.read_pickle(cache)
+        else:
+            self.state = injuries.InjuryState(CURRENT, today)
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            pd.to_pickle(self.state, cache)
+        try:
+            self.feed = nba_logs.injury_feed()
+        except Exception:
+            self.feed = {}
+        self.tags = {e["playerId"]: e["playerPoolEntry"]["player"].get("injuryStatus")
+                     for tm in roster["teams"] for e in tm["roster"]["entries"]}
+        # h = which upcoming game this is for the team (games already under way don't count)
+        self.game_no, count = {}, {}
+        for sp in sorted(x for x in pro_games if x >= sp_now):
+            for pro in pro_games[sp]:
+                if sp == sp_now and starts.get((pro, sp), 0) <= now:
+                    continue
+                count[pro] = count.get(pro, 0) + 1
+                self.game_no[(pro, sp)] = count[pro]
+
+    def _status(self, aid, tag=None):
+        f = self.feed.get(aid)
+        if f:
+            return f["status"], f["return"]
+        tag = tag or self.tags.get(aid)
+        return (None if tag in (None, "ACTIVE", "NORMAL") else tag), None
+
+    def p_play(self, aid, base, tag, pro, sp):
+        st, ret = self._status(aid, tag)
+        return injuries.play_p(self.curve, base, st, self.state.streak.get(aid, 0), self.game_no.get((pro, sp), 1),
+                               self.dates[sp].isoformat(), ret)
+
+    def boost(self, aid, pro, sp):
+        """(extra expected FP, 'Name out') for this game from key teammates likely to sit."""
+        h, day = self.game_no.get((pro, sp), 1), self.dates[sp].isoformat()
+
+        def sit(k):
+            st, ret = self._status(k)
+            return 1 - injuries.play_p(self.curve, 1 - self.state.sit_base(k), st, self.state.streak.get(k, 0), h, day, ret)
+        total, best = self.state.boost(aid, sit)
+        why = f"{self.state.name.get(best[0], 'teammate')} out" if best else None
+        return total, why
+
+
 def play_chance(status, days_ahead, base):
     if status in pj.STATUS_PLAY:
         if status in ("OUT", "INJURY_RESERVE"):
@@ -91,7 +149,7 @@ def play_chance(status, days_ahead, base):
 ODDS_OUT = ROOT / "site" / "data" / "odds.json"
 
 
-def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng):
+def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
     """Season simulation from now: playoff / bye / title odds, stakes, rooting guide, clinch flags."""
     reg, rounds, n_po = season_sim.league_format(CURRENT, t)
     caps = t["caps"].set_index("mp")
@@ -100,9 +158,12 @@ def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng):
     done = [(int(r.team_id), int(r.opp_id), float(r.pts), float(r.opp_pts)) for r in g.itertuples() if r.mp < mp and r.result]
     future = [(int(r.mp), int(r.team_id), int(r.opp_id)) for r in g.itertuples() if r.mp >= mp]
     teams = sorted(team_out)
-    players = {tid: team_out[tid]["model_players"] for tid in teams}
+    players = {tid: [{"pid": pid, "pro": pro, "mu": mu, "base": base, "inj": inj} for pro, mu, base, inj, pid in team_out[tid]["model_players"]]
+               for tid in teams}
     later = sorted({f[0] for f in future if f[0] > mp}) + [r for r in rounds if r in caps.index]
-    exp = season_sim.expected_scores(players, later, caps, t["pro_games"], sp_now, rng, play_chance)
+    exp = season_sim.expected_scores(players, later, caps, t["pro_games"], sp_now, rng,
+                                     lambda pl, sp, h: (avail.p_play(pl["pid"], pl["base"], pl["inj"], pl["pro"], sp),
+                                                        pl["mu"] + avail.boost(pl["pid"], pl["pro"], sp)[0]))
     params = {**season_sim.DEFAULTS, **{k: pj.PARAMS[k] for k in ("week_cv", "odds_drift", "odds_shrink") if k in pj.PARAMS}}
     out = season_sim.simulate(teams, done, future, exp, [r for r in rounds if r in caps.index], n_po, params, SIMS, rng,
                               current={"mp": mp, "draws": cur_draws} if cur_draws else None)
@@ -166,6 +227,7 @@ def main():
     games_now = nba_game_status(dates[sp_now])  # today's NBA games: not started / in progress / final
 
     roster = c.league(CURRENT, ["mRoster"], scoring_period=sp_now)
+    avail = InjuryAvailability(roster, dates, sp_now, starts, t["pro_games"], now)
     daily = t["daily"]
     names = dict(zip(t["teams"].team_id, t["teams"].name))
     rng = np.random.default_rng()
@@ -216,12 +278,16 @@ def main():
                     days.append({"sp": sp, "state": "played" if gp else ("missed" if has_game else "none"),
                                  "pts": pts if gp else None, "counted": bool(counted and gp)})
                 elif has_game:
-                    p = play_chance(inj, sp - sp_now, base)
-                    rows.append({"sp": sp, "mu": mu, "sd": sd, "p": p, "player_id": pid})
-                    days.append({"sp": sp, "state": "game", "p": p})
+                    p = avail.p_play(pid, base, inj, pro, sp)
+                    b, why = avail.boost(pid, pro, sp)
+                    rows.append({"sp": sp, "mu": mu + b, "sd": sd, "p": p, "player_id": pid})
+                    day = {"sp": sp, "state": "game", "p": p}
+                    if b >= 0.5:
+                        day.update(boost=round(b, 1), why=why)
+                    days.append(day)
                 else:
                     days.append({"sp": sp, "state": "none"})
-            model_players.append((pro, mu, base, inj))
+            model_players.append((pro, mu, base, inj, pid))
             grid.append({"id": pid, "name": pl.get("fullName"), "pro": abbrev.get(pro, ""), "inj": inj,
                          "slot": e.get("lineupSlotId"), "mu": mu, "days": days})
 
@@ -296,7 +362,7 @@ def main():
         "snapshots": [s for s in snaps if s["mp"] == mp],
     }
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
-    write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng)
+    write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail)
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 

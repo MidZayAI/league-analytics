@@ -39,8 +39,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: data/tidy
-          key: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/model_params.json', 'requirements.txt') }}-${{ github.run_id }}
-          restore-keys: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/model_params.json', 'requirements.txt') }}-
+          key: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/injuries.py', 'pipeline/usage.py', 'pipeline/model_params.json', 'requirements.txt') }}-${{ github.run_id }}
+          restore-keys: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/injuries.py', 'pipeline/usage.py', 'pipeline/model_params.json', 'requirements.txt') }}-
 
       - name: Fetch from ESPN and build analytics
         env:

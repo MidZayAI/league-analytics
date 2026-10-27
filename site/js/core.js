@@ -13,6 +13,7 @@ const GLOSSARY = {
   breakdown: 'Pregame expected → availability (who played) → roster moves → lineup & cap → breakouts (season level vs. expectation) → hot/cold (week-to-week swings). Always adds up to the real score.',
   sofar: 'The same breakdown for the days played so far this week.',
   odds: '10,000 simulations of the rest of the season: every remaining game played from each roster’s projected strength, this week’s game from the live forecast, then the playoff bracket. Ties in the standings use head-to-head record, then points for. Clinched/Eliminated are exact math, not simulations.',
+  injuries: 'Injuries: a player tagged OUT uses ESPN’s expected return date when there is one (otherwise how often players in the same spot have returned in past seasons). When a key teammate is likely to sit, players who historically gain from his absence get a boost — half of their measured with/without-him gain, which tested best against later games.',
   stakes: 'Odds if this week’s game is won vs. lost, from the same 10,000 season simulations (the live matchup forecast decides this week). The gap is how much this game matters.',
   rooting: 'For every other game this week: how much your playoff odds move depending on who wins. Root for the team listed; the number is the swing in percentage points.',
   seedgrid: 'Chance of finishing at each seed. Darker = more likely. Seeds 1-2 get a first-round bye; 1-6 make the playoffs.',

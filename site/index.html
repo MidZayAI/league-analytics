@@ -353,7 +353,7 @@
               <div class="flex items-center justify-between px-1 pb-1.5 text-[10.5px] text-muted font-semibold uppercase tracking-wider">
                 <span class="hidden md:inline" x-text="s.name"></span><span class="md:hidden">Player</span>
                 <span class="flex items-center gap-2"><span class="w-9 text-right">Pts</span><span class="w-9 text-right">Exp</span>
-                  <span class="info-wrap normal-case" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About points and projections">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.playerproj"></span></span></span>
+                  <span class="info-wrap normal-case" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About points and projections">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.playerproj + ' ' + glossary.injuries"></span></span></span>
               </div>
               <template x-for="p in livePlayers(s)" :key="p.id">
                 <div class="items-center gap-2.5 px-1 py-2 border-t" style="border-color: var(--grid)"
@@ -1486,9 +1486,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=6839af269d"></script>
+<script src="js/core.js?v=0c5b108d72"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
-<script src="js/matchups.js?v=36ad5d5917"></script>
+<script src="js/matchups.js?v=02bc8618fb"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>

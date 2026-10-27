@@ -37,9 +37,14 @@ def league_format(season, t):
     return reg, rounds, n_po
 
 
-def expected_scores(players, weeks, caps, games, sp_now, rng, play_fn):
-    """players: team_id -> list of (pro, mu, base_p, inj). Returns {(team_id, mp): expected score}.
-    play_fn(inj, days_ahead, base) gives the chance to play on a given day."""
+def expected_scores(players, weeks, caps, games, sp_now, rng, avail):
+    """players: team_id -> list of dicts (pid, pro, mu, base, inj). Returns {(team_id, mp): expected score}.
+    avail(player, sp, h) -> (chance to play, expected FP) for his team's game on day sp, which is
+    its h-th game from sp_now (injury return curves and teammate bumps live there)."""
+    game_no = {}
+    for sp in sorted(s for s in games if s >= sp_now):
+        for pro in games[sp]:
+            game_no.setdefault(pro, {})[sp] = len(game_no.get(pro, {})) + 1
     out = {}
     for tid, plist in players.items():
         for mp in weeks:
@@ -47,9 +52,10 @@ def expected_scores(players, weeks, caps, games, sp_now, rng, play_fn):
             rows = []
             for sp in range(int(c.sp_start), int(c.sp_end) + 1):
                 day_games = games.get(sp, ())
-                for pro, mu, base, inj in plist:
-                    if pro in day_games:
-                        rows.append((sp, max(mu, 1.0), play_fn(inj, sp - sp_now, base), 0))
+                for pl in plist:
+                    if pl["pro"] in day_games:
+                        p, mu = avail(pl, sp, game_no[pl["pro"]][sp])
+                        rows.append((sp, max(mu, 1.0), p, 0))
             cands = pd.DataFrame(rows, columns=["sp", "mu", "p", "player_id"])
             out[(tid, mp)] = expected_value(cands, int(c.cap), 300, rng)[0]
     return out

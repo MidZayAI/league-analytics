@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import injuries  # noqa: E402
 import season_sim as ss  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 from normalize import TIDY, cached_seasons, load_season  # noqa: E402
@@ -50,14 +51,16 @@ def season_games(t, reg_mps):
     return [(int(r.mp), int(r.team_id), int(r.opp_id), float(r.pts or 0), float(r.opp_pts or 0)) for r in g.itertuples()]
 
 
-def states_for(season, t, model, rng):
+def states_for(season, t, model, rng, flags=(), curve=None):
     """Yield (after_week, teams, done, future, exp) for every week start of a completed season."""
     reg, rounds, n_po = ss.league_format(season, t)
     caps = t["caps"].set_index("mp")
     games = season_games(t, reg)
     teams = sorted(t["teams"].team_id.tolist())
     daily, pro_games = t["daily"], t["pro_games"]
+    date_of = {r.sp: r.date.isoformat() for r in t["calendar"].itertuples()}
     play_mps = sorted({g[0] for g in games})
+    monthly = {}
     for w in play_mps:
         start = int(caps.loc[w].sp_start)
         raw = model.raw_state(season, start)
@@ -66,10 +69,25 @@ def states_for(season, t, model, rng):
         for tid in teams:
             ro = day[day.team_id == tid].drop_duplicates("player_id")
             est = model.finish(raw, ro.player_id.tolist())
-            players[tid] = [(int(r.pro), float(est.at[r.player_id, "mu"]), float(est.at[r.player_id, "p"]), "ACTIVE")
-                            for r in ro.itertuples()]
+            players[tid] = [{"pid": int(r.player_id), "pro": int(r.pro), "mu": float(est.at[r.player_id, "mu"]),
+                             "base": float(est.at[r.player_id, "p"]), "inj": None} for r in ro.itertuples()]
         future_mps = [m for m in play_mps if m >= w] + [m for m in rounds if m in caps.index]
-        exp = ss.expected_scores(players, future_mps, caps, pro_games, start, rng, lambda inj, ahead, base: base)
+        avail = lambda pl, sp, h: (pl["base"], pl["mu"])
+        if flags:
+            d = date_of[start]
+            if d[:7] not in monthly:
+                monthly[d[:7]] = injuries.InjuryState(season, d[:7] + "-01")
+            inj = injuries.InjuryState(season, d, bumps_from=monthly[d[:7]])
+
+            def avail(pl, sp, h, inj=inj):
+                k = inj.streak.get(pl["pid"], 0)
+                p = injuries.play_p(curve, pl["base"], None, k, h) if "curve" in flags and k else pl["base"]
+                mu = pl["mu"]
+                if "bumps" in flags:
+                    sit = lambda K: 1 - injuries.play_p(curve, 1 - inj.sit_base(K), None, inj.streak.get(K, 0), h)
+                    mu += inj.boost(pl["pid"], sit)[0]
+                return p, mu
+        exp = ss.expected_scores(players, future_mps, caps, pro_games, start, rng, avail)
         done = [(a, b, pa, pb) for mp, a, b, pa, pb in games if mp < w]
         future = [(mp, a, b) for mp, a, b, _, _ in games if mp >= w]
         yield w - 1, teams, done, future, exp, [m for m in rounds if m in caps.index], n_po
@@ -95,6 +113,21 @@ def main():
     bt = [s for s in seasons if s - 1 in tables and tables[s]["complete"]]
     week_cv = fit_week_cv(bt)
     print(f"week-to-week cv (fitted): {week_cv:.3f}")
+
+    if "--injuries" in sys.argv:  # compare injury components at the saved (tuned) params
+        saved = json.loads(PARAMS_FILE.read_text(encoding="utf-8"))
+        params = {k: saved[k] for k in ("week_cv", "odds_drift", "odds_shrink")}
+        for flags in ((), ("curve",), ("curve", "bumps")):
+            rows = []
+            for s in bt:
+                y = None
+                for after, teams, done, future, exp, rounds, n_po in states_for(s, tables[s], model, rng, flags, saved.get("return_curve")):
+                    y = y or outcomes(tables[s], n_po)
+                    out = ss.simulate(teams, done, future, exp, rounds, n_po, params, SIMS, rng)
+                    rows += [{**r, "y": y[r["team_id"]]} for r in ss.summarize(teams, out, n_po, None)]
+            b = {k: brier(rows, k) for k in ("playoff", "bye", "title")}
+            print(f"  injuries {'+'.join(flags) or 'off':12} brier playoff {b['playoff']:.4f}  bye {b['bye']:.4f}  title {b['title']:.4f}")
+        return
 
     states = []
     for s in bt:

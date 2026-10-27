@@ -88,7 +88,10 @@ window.Matchups = {
     }).sort((a, b) => b.mu - a.mu);
   },
   statusLine(p) {
-    const parts = [p.pro, this.todayLabel(p), p.more >= 1 ? `~${fmt.n(p.more)} more` : ''];
+    // teammate usage bump on his next game, e.g. "+4 · Jalen Williams out"
+    const next = p.days.find((d) => d.state === 'game' && d.boost >= 1.5);  // skip trivial bumps
+    const parts = [p.pro, this.todayLabel(p), p.more >= 1 ? `~${fmt.n(p.more)} more` : '',
+                   next ? `+${fmt.n(next.boost)} · ${next.why}` : ''];
     if (!p.more && p.today?.state !== 'live' && !p.left) parts.push('done for the week');
     return parts.filter(Boolean).join(' · ');
   },
