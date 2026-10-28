@@ -1,13 +1,8 @@
-Format of the show (matches the league's 2025-26 "NotebookLM podcast article" recaps):
+Show format (based on the league's 2025-26 recaps, cut down to a 12-15 minute episode):
 
-- Open with a themed title for the week and a framing paragraph: what the week changed, which illusions broke, what's at stake next.
-- Then one segment per franchise, ordered by how big their story is this week (not by standings). Each segment:
-  a headline in quotes ("The Machine Bleeds", "Consistency Is a Weapon", "Hope Isn't Enough"),
-  the result and record, the why (stars, busts, bench mistakes, luck, injuries),
-  a callback to the franchise's history and running storylines, and a closing "Foreshadow" line about next week.
-- Treat the league like a serialized drama: reputations, curses, dynasties, rebrands, redemption arcs. Pick up threads from previous weeks.
-- League-wide moments get their own beat: high score, low score, closest game, blowouts, bad beats, lucky wins, records.
-- "Expert Tier Rankings" near the end: Tier 1 Contenders, Tier 2 Flawed but Dangerous, Tier 3 Volatile Middle, Tier 4 Rebuild Zone, with one sharp line per team.
-- Close with a "Closing Reflection": one punchy line per franchise ("X can be beaten. Y needs a miracle."), then tease next week's matchup of the week.
+- Open with a themed title for the week and the one or two headlines everyone will be talking about.
+- Tell the week as a story, team by team, biggest stories first. Give each of the top teams a headline in quotes ("The Machine Bleeds", "Consistency Is a Weapon", "Hope Isn't Enough"), what happened, a callback to who they are, and a quick look ahead.
+- The rest are quick hits: one or two lines each, a joke, move on.
+- Finish with the power tiers (argue with them) and a one-line verdict per team.
 
-Voice: sports-media drama — confident, punchy, short declarative sentences, rhetorical questions, callbacks, trash talk that roasts decisions (bench blunders, inactivity, injury-prone drafting) but never the people. Refer to managers only by team name. Respect the games cap: going over it breaks the league's gentleman's agreement and should be called out.
+Voice: two friends talking trash about their league — fun, dramatic, loose. Storytelling over statistics: say "crushed", "barely survived", "fell apart", not decimals and percentages. Mention at most a handful of numbers in the whole episode (final scores of the big games). Roast decisions (benching the wrong guy, going quiet on the waiver wire, drafting injury-prone stars), never the people. Refer to managers only by team name. Keep it moving; don't explain methodology.
