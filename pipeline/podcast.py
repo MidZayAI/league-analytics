@@ -32,9 +32,11 @@ DATA = ROOT / "site" / "data"
 POD = ROOT / "site" / "podcast"
 DRAFTS, EPISODES = POD / "drafts", POD / "episodes"
 STYLE = ROOT / "config" / "podcast_style.md"
+LORE = ROOT / "config" / "podcast_lore.json"
 SITE_URL = os.environ.get("SITE_URL", "https://midzayai.github.io/league-analytics/")
 AUDIO = (".mp3", ".m4a", ".wav")
 MODEL = "claude-opus-5-5"
+UPSET_GAP = 30  # expected-points edge the loser needed for a result to count as an upset
 
 
 def load(name):
@@ -85,7 +87,8 @@ def brief(mp=None):
             "winner": name[w["team_id"]], "loser": name[lo["team_id"]], "tie": w["result"] == "T",
             "score": [r0(w["pts"]), r0(lo["pts"])], "margin": r0(w["margin"]),
             "expected": [r0(w.get("e4")), r0(lo.get("e4"))],
-            "upset": bool(w.get("flipped") or lo.get("flipped")),
+            # the model's favourite lost, and it wasn't a coin flip
+            "upset": bool(w.get("flipped") or lo.get("flipped")) and (lo.get("e4") or 0) - (w.get("e4") or 0) >= UPSET_GAP,
             "series_before": series(w["team_id"], lo["team_id"]),
             "winner_star": _star(w), "loser_star": _star(lo), "loser_bust": _bust(lo),
             "loser_bench_lost": r0(lo.get("bench_lost")), "loser_lineup_cost_game": bool(lo.get("coaching_loss")),
@@ -124,7 +127,98 @@ def brief(mp=None):
         "next_week": _next_week(mp, name, owner, h2h),
         "injuries": _injuries(name),
     }
+    out["franchises"] = _franchises(out, season, hist, mp, name, by_team)
+    out["tiers"] = _tiers(out)
     return out
+
+
+def _label(s):
+    return f"{s - 1}-{str(s)[2:]}"
+
+
+def _franchises(b, season, hist, mp, name, by_team):
+    """Everything about each franchise in one place, ordered by how big their story is this week."""
+    lore = json.loads(LORE.read_text(encoding="utf-8")) if LORE.exists() else {}
+    odds = {o["team"]: o for o in b["odds"]}
+    nxt = {t: (m, i) for m in b["next_week"] for i, t in enumerate(m["teams"])}
+    inj = {}
+    for p in b["injuries"]["rostered"]:
+        inj.setdefault(p["team"], []).append(p)
+    games = {g["winner"]: g for g in b["games"]} | {g["loser"]: g for g in b["games"]}
+    closest = min(b["games"], key=lambda g: g["margin"]) if b["games"] else None
+    at = {a["owner_id"]: a for a in hist.get("all_time", [])}
+    past = {}
+    for r in hist.get("seasons", []):
+        if r["season"] < b["season"]:
+            past.setdefault(r["owner_id"], []).append(r)
+    out = []
+    for t in season["teams"]:
+        tid, nm, oid = t["team_id"], t["name"], t["owner_id"]
+        w = by_team.get(tid)
+        if not w:
+            continue
+        mine = sorted((x for x in season["weeks"] if x["team_id"] == tid and x["result"] and x["mp"] <= mp),
+                      key=lambda x: x["mp"])
+        streak = 0
+        for x in reversed(mine):
+            if x["result"] != mine[-1]["result"]:
+                break
+            streak += 1
+        tw = next(x for x in b["teams"] if x["team"] == nm)
+        g = games.get(nm)
+        ps = sorted(past.get(oid, []), key=lambda r: r["season"])
+        last = ps[-1] if ps else None
+        o = odds.get(nm, {})
+        m, side = nxt.get(nm, (None, 0))
+        a = at.get(oid, {})
+        story = (abs(o.get("playoff_change") or 0) + 30 * bool(g and g["upset"]) + 25 * tw["lineup_cost_game"]
+                 + 20 * (tw["bad_beat"] or tw["lucky_win"]) + 20 * (nm in (b["high"], b["low"]))
+                 + 15 * bool(closest and nm in (closest["winner"], closest["loser"])) + abs(tw["vs_expected"]) / 10)
+        lo = lore.get(oid, {})
+        out.append({
+            "team": nm, "record": f"{t['w']}-{t['l']}", "streak": f"{mine[-1]['result']}{streak}" if mine else None,
+            "result": w["result"], "pts": tw["pts"], "opp": name.get(w["opp_id"]), "opp_pts": r0(w["opp_pts"]),
+            "margin": abs(r0(w["margin"])), "week_rank": w["rank"], "allplay": tw["allplay"],
+            "expected": tw["expected"], "vs_expected": tw["vs_expected"],
+            "bad_beat": tw["bad_beat"], "lucky_win": tw["lucky_win"],
+            "stars": [{"name": p["name"], "pts": r0(p["pts"]), "games": p["games"]}
+                      for p in sorted(w.get("hot") or [], key=lambda p: -p["pts"])[:2]],
+            "bust": _bust(w), "bench_lost": tw["bench_lost"], "missed_starts": tw["missed_starts"],
+            "lineup_cost_game": tw["lineup_cost_game"], "over_cap": tw["over_cap"],
+            "injured": inj.get(nm, []), "odds": o,
+            "next": ({"opp": m["teams"][1 - side], "win_prob": m["win_prob"][side] if m["win_prob"] else None,
+                      "proj": [m["proj"][side], m["proj"][1 - side]], "swing": m["playoff_swing"][side],
+                      "series": _flip(m["series"]) if (m["series"] and side == 1) else m["series"]} if m else None),
+            "history": {
+                "seasons": len(ps), "former_names": list(dict.fromkeys(r["name"] for r in ps if r["name"] != nm)),
+                "titles": [_label(r["season"]) for r in ps if r.get("champion")],
+                "runner_ups": [_label(r["season"]) for r in ps if r.get("runner_up")],
+                "all_time": f"{a.get('w', 0)}-{a.get('l', 0)}" if a else None,
+                "playoff_apps": a.get("playoff_apps"),
+                "last_season": ({"label": _label(last["season"]), "record": f"{last['w']}-{last['l']}",
+                                 "finish": last.get("rank_final")} if last else None),
+            },
+            "identity": lo.get("identity"), "also_known_as": lo.get("also_known_as", []), "threads": lo.get("threads", []),
+            "story": round(story, 1),
+        })
+    return sorted(out, key=lambda f: -f["story"])
+
+
+def _flip(sr):
+    return {"w": sr["l"], "l": sr["w"]}
+
+
+TIERS = [(0.18, "Tier 1 — Contenders"), (0.11, "Tier 2 — Flawed but Dangerous"),
+         (0.06, "Tier 3 — The Volatile Middle"), (0.0, "Tier 4 — The Rebuild Zone")]
+
+
+def _tiers(b):
+    """Model-based tiers from title odds (the hosts can argue with them)."""
+    out = {}
+    for o in sorted(b["odds"], key=lambda o: -float(o["title"][:-1])):
+        t = float(o["title"][:-1]) / 100
+        out.setdefault(next(n for cut, n in TIERS if t >= cut), []).append(o["team"])
+    return [{"tier": n, "teams": out[n]} for _, n in TIERS if n in out]
 
 
 def _star(w):
@@ -182,7 +276,8 @@ def _next_week(mp, name, owner, h2h):
                     "playoff_swing": [r0(100 * (sa.get("playoff_w", 0) - sa.get("playoff_l", 0))),
                                       r0(100 * (stakes.get(b, {}).get("playoff_w", 0) - stakes.get(b, {}).get("playoff_l", 0)))],
                     "series": {"w": r["w"], "l": r["l"]} if r else None})
-    out.sort(key=lambda g: -sum(g["playoff_swing"]))
+    # matchup of the week: a lot riding on it, and a real contest
+    out.sort(key=lambda g: -sum(g["playoff_swing"]) * (1 - abs(float((g["win_prob"] or ["50%"])[0][:-1]) / 100 - 0.5)))
     return out
 
 
@@ -200,104 +295,135 @@ def _injuries(name):
 # ---------------------------------------------------------------- source doc + prompt
 
 
+def _ordinal(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def _series_line(a, b, sr, incl):
+    lead = "leads" if sr["w"] > sr["l"] else ("trails" if sr["w"] < sr["l"] else "is tied with")
+    return f"All-time series{' (including this game)' if incl else ''}: {a} {lead} {b} {sr['w']}-{sr['l']}."
+
+
+def _franchise_md(f, b):
+    L = [f"### {f['team']} ({f['record']})", ""]
+    res = {"W": "beat", "L": "lost to", "T": "tied"}[f["result"]]
+    L.append(f"- Week {b['mp']}: {res} {f['opp']} {f['pts']}–{f['opp_pts']} (margin {f['margin']}). "
+             f"{_ordinal(f['week_rank'])}-highest score of the week; all-play record {f['allplay']}.")
+    if f["streak"] and int(f["streak"][1:]) >= 2:
+        L.append(f"- Streak: {f['streak'][1:]} straight {'wins' if f['streak'][0] == 'W' else 'losses'}.")
+    L.append(f"- Expected score was {f['expected']} ({'+' if f['vs_expected'] >= 0 else ''}{f['vs_expected']} vs expected).")
+    if f["bad_beat"]:
+        L.append("- Bad beat: one of the week's top-two scores, and still lost.")
+    if f["lucky_win"]:
+        L.append("- Lucky win: a below-average score that still won.")
+    for p in f["stars"]:
+        L.append(f"- Star: {p['name']}, {p['pts']} points in {p['games']} games.")
+    if f["bust"] and f["bust"]["vs_usual"] < -15:
+        p = f["bust"]
+        L.append(f"- Letdown: {p['name']}, {p['pts']} points in {p['games']} games ({abs(p['vs_usual'])} below his usual).")
+    if f["bench_lost"] >= 40:
+        miss = ", ".join(f"{m['name']} ({m['pts']})" for m in f["missed_starts"])
+        L.append(f"- Left {f['bench_lost']} points on the bench" + (f", benching {miss}" if miss else "")
+                 + (". Their best possible lineup would have WON this game." if f["lineup_cost_game"] else "."))
+    if f["over_cap"]:
+        L.append("- Went over the games cap, breaking the league's gentleman's agreement.")
+    for p in f["injured"]:
+        back = f", expected back {p['back']}" if p["back"] else ""
+        L.append(f"- Injury: {p['name']} ({p['fp']} fantasy points a game) is {p['status']}{back}.")
+    o = f["odds"]
+    if o:
+        ch = (f", {'up' if o['playoff_change'] > 0 else 'down'} {abs(o['playoff_change'])} percentage points since last week"
+              if o.get("playoff_change") else "")
+        L.append(f"- Playoff odds {o['playoff']}{ch}; title odds {o['title']}.")
+    h = f["history"]
+    hist = []
+    if h["seasons"]:
+        hist.append(f"{h['seasons']} previous seasons, all-time record {h['all_time']}, {h['playoff_apps']} playoff appearances")
+    else:
+        hist.append("first season in the league")
+    if h["titles"]:
+        hist.append(f"champions in {', '.join(h['titles'])}")
+    if h["runner_ups"]:
+        hist.append(f"runner-up in {', '.join(h['runner_ups'])}")
+    if h["last_season"]:
+        ls = h["last_season"]
+        hist.append(f"last season ({ls['label']}) went {ls['record']}" + (f" and finished {_ordinal(ls['finish'])}" if ls["finish"] else ""))
+    names = list(dict.fromkeys(f["also_known_as"] + h["former_names"]))
+    if names:
+        hist.append(f"also known as {', '.join(names)}")
+    L.append(f"- History: {'; '.join(hist)}.")
+    if f["identity"]:
+        L.append(f"- Identity: {f['identity']}")
+    for t in f["threads"]:
+        L.append(f"- Running storyline: {t}")
+    n = f["next"]
+    if n:
+        wp = f", {n['win_prob']} to win" if n["win_prob"] else ""
+        ser = " " + _series_line(f["team"], n["opp"], n["series"], False) if n["series"] else ""
+        L.append(f"- Foreshadow: Week {b['mp'] + 1} vs {n['opp']}, projected {n['proj'][0]}–{n['proj'][1]}{wp}; "
+                 f"win or lose swings their playoff odds by {n['swing']} percentage points.{ser}")
+    return L + [""]
+
+
 def source_md(b):
-    L = [f"# {b['league']} — Week {b['mp']} recap ({b['season_label']} season)", "",
+    L = [f"# {b['league']} — Week {b['mp']} ({b['season_label']} season)", "",
          f"Week {b['mp']} ran {b['dates'][0]} to {b['dates'][1]}; each team could use {b['games_cap']} player-games. "
-         "Every number below is checked against the league's data. Use only these numbers.", ""]
+         "Every number below comes from the league's data, so use only these numbers. "
+         "History, identities and running storylines are the league's lore: use them for callbacks.", ""]
     g = b["games"]
     if g:
         closest, blowout = min(g, key=lambda x: x["margin"]), max(g, key=lambda x: x["margin"])
-        L += ["## 1. Cold open: the headline", ""]
-        ups = [x for x in g if x["upset"]]
-        if ups:
-            u = ups[0]
-            L.append(f"- Upset of the week: {u['winner']} beat {u['loser']} {u['score'][0]}–{u['score'][1]} "
-                     f"even though the model expected {u['loser']} to win ({u['expected'][1]} vs {u['expected'][0]} expected).")
+        L += ["## The week in one breath", ""]
+        for u in (x for x in g if x["upset"]):
+            L.append(f"- Upset: {u['winner']} beat {u['loser']} {u['score'][0]}–{u['score'][1]}, "
+                     f"though the model expected {u['loser']} to win ({u['expected'][1]} vs {u['expected'][0]}).")
         L.append(f"- Closest game: {closest['winner']} over {closest['loser']} by {closest['margin']}.")
         L.append(f"- Biggest blowout: {blowout['winner']} over {blowout['loser']} by {blowout['margin']}.")
-        L.append(f"- High score: {b['teams'][0]['team']} with {b['teams'][0]['pts']}. Low score: {b['teams'][-1]['team']} with {b['teams'][-1]['pts']}.")
+        L.append(f"- High score: {b['teams'][0]['team']} with {b['teams'][0]['pts']}. "
+                 f"Low score: {b['teams'][-1]['team']} with {b['teams'][-1]['pts']}.")
         for r in b["records"]:
-            L.append(f"- League record book: {r['team']} — #{r['place']} all-time {r['record']} ({r['value']}).")
-        L += ["", "## 2. Scoreboard: every matchup", ""]
+            L.append(f"- Record book: {r['team']} now holds the #{r['place']} {r['record']} in league history ({r['value']}).")
         for x in g:
-            line = f"### {x['winner']} {x['score'][0]}, {x['loser']} {x['score'][1]}"
-            L += [line, f"- Margin {x['margin']}. Expected scores were {x['winner']} {x['expected'][0]}, {x['loser']} {x['expected'][1]}."]
-            if x["winner_star"]:
-                s = x["winner_star"]
-                L.append(f"- {x['winner']}'s best performer: {s['name']}, {s['pts']} points in {s['games']} games.")
-            if x["loser_bust"] and x["loser_bust"]["vs_usual"] < -15:
-                s = x["loser_bust"]
-                L.append(f"- {x['loser']} got let down by {s['name']}: {s['pts']} points in {s['games']} games, {abs(s['vs_usual'])} below his usual.")
-            if x["loser_lineup_cost_game"]:
-                L.append(f"- {x['loser']} would have WON with their best possible lineup (left {x['loser_bench_lost']} points on the bench).")
             if x["series_before"]:
-                sr = x["series_before"]
-                L.append(f"- All-time series, including this game: {x['winner']} leads {x['loser']} {sr['w']}-{sr['l']}." if sr['w'] >= sr['l']
-                         else f"- All-time series, including this game: {x['winner']} trails {x['loser']} {sr['w']}-{sr['l']}.")
-            L.append("")
-    L += ["## 3. Luck lab", "",
-          "All-play record = how this week's score would have done against every other team."]
-    for t in b["teams"]:
-        tags = [s for s, on in (("bad beat: 2nd-highest-or-better score and still lost", t["bad_beat"]),
-                                ("lucky win: below-average score and still won", t["lucky_win"])) if on]
-        L.append(f"- {t['team']}: {t['pts']} ({t['result']}), all-play {t['allplay']}" + (f" — {'; '.join(tags)}" if tags else ""))
-    luck = sorted(b["standings"], key=lambda t: t["luck"])
-    if luck:
-        L += [f"- Season luck so far: unluckiest {luck[0]['team']} ({luck[0]['luck']:+} wins vs expected), "
-              f"luckiest {luck[-1]['team']} ({luck[-1]['luck']:+})."]
-    L += ["", "## 4. Coaching corner: points left on the bench", ""]
-    for t in sorted(b["teams"], key=lambda t: -t["bench_lost"])[:4]:
-        miss = ", ".join(f"{m['name']} ({m['pts']})" for m in t["missed_starts"])
-        L.append(f"- {t['team']}: {t['bench_lost']} points left on the bench ({t['efficiency']}% lineup efficiency)"
-                 + (f". Benched: {miss}" if miss else "") + (". This cost them the game." if t["lineup_cost_game"] else "."))
-    over = [t["team"] for t in b["teams"] if t["over_cap"]]
-    if over:
-        L.append(f"- Went over the games cap (breaking the gentleman's agreement): {', '.join(over)}.")
-    L += ["", "## 5. Breakouts and busts", ""]
+                L.append(f"- {_series_line(x['winner'], x['loser'], x['series_before'], True)}")
+        L += ["", "## Franchise by franchise (biggest stories first)", ""]
+        for f in b["franchises"]:
+            L += _franchise_md(f, b)
+    L += ["## Breakouts and busts around the league", ""]
     for p in b["breakouts"]:
-        L.append(f"- Breakout: {p['name']} ({p['team']}) — {p['pts']} in {p['games']} games, {p['vs_usual']} more than usual.")
+        L.append(f"- Breakout: {p['name']} ({p['team']}), {p['pts']} in {p['games']} games, {p['vs_usual']} more than usual.")
     for p in b["busts"]:
-        L.append(f"- Bust: {p['name']} ({p['team']}) — {p['pts']} in {p['games']} games, {abs(p['vs_usual'])} fewer than usual.")
-    L += ["", "## 6. Standings and playoff odds", ""]
+        L.append(f"- Bust: {p['name']} ({p['team']}), {p['pts']} in {p['games']} games, {abs(p['vs_usual'])} fewer than usual.")
+    if b["injuries"]["pickups"]:
+        L += ["", "## Waiver wire watch", ""]
+        for p in b["injuries"]["pickups"]:
+            L.append(f"- {p['name']} (free agent): about +{p['bump']} points a game while {p['because']} is out.")
+    L += ["", "## Standings", ""]
     for i, t in enumerate(b["standings"], 1):
         L.append(f"{i}. {t['team']} {t['w']}-{t['l']} ({t['pf']} points for)")
-    if b["odds"]:
-        L.append("")
-        for o in b["odds"]:
-            ch = (f" ({'up' if o['playoff_change'] > 0 else 'down'} {abs(o['playoff_change'])} percentage points since last week)"
-                  if o["playoff_change"] else "")
-            flag = " — CLINCHED" if o["clinched"] else (" — ELIMINATED" if o["eliminated"] else "")
-            L.append(f"- {o['team']}: {o['playoff']} playoffs{ch}, {o['title']} title{flag}")
-    inj = b["injuries"]
-    if inj["rostered"] or inj["pickups"]:
-        L += ["", "## 7. Injury report and waiver wire", ""]
-        for p in inj["rostered"]:
-            back = f", expected back {p['back']}" if p["back"] else ""
-            ben = f" Who benefits: {', '.join(p['who_benefits'])}." if p["who_benefits"] else ""
-            L.append(f"- {p['team']}'s {p['name']} ({p['fp']} fantasy points a game) is {p['status']}{back}.{ben}")
-        for p in inj["pickups"]:
-            L.append(f"- Pickup idea: {p['name']} (free agent), about +{p['bump']} points a game with {p['because']} out.")
+    if b["tiers"]:
+        L += ["", "## Expert Tier Rankings (model-based, from title odds)", ""]
+        for t in b["tiers"]:
+            L.append(f"- {t['tier']}: {', '.join(t['teams'])}")
+        L.append("- The hosts are free to disagree with the model and argue it out.")
     if b["next_week"]:
-        L += ["", f"## 8. Week {b['mp'] + 1} preview", ""]
-        for i, m in enumerate(b["next_week"]):
-            head = "Game of the week: " if i == 0 else ""
-            wp = f" Win chances {m['win_prob'][0]} / {m['win_prob'][1]}." if m["win_prob"] else ""
-            ser = f" All-time series {m['series']['w']}-{m['series']['l']}." if m["series"] else ""
-            L.append(f"- {head}{m['teams'][0]} vs {m['teams'][1]}: projected {m['proj'][0]}–{m['proj'][1]}.{wp}{ser}"
-                     f" Win vs loss swings playoff odds by {m['playoff_swing'][0]} / {m['playoff_swing'][1]} percentage points.")
-    L += ["", "## 9. Close: predictions and one-liners", "",
-          "- Each host picks a lock of the week and a team on upset alert.", ""]
+        m = b["next_week"][0]
+        L += ["", f"## Matchup of the week: Week {b['mp'] + 1}", "",
+              f"- {m['teams'][0]} vs {m['teams'][1]}: the most playoff odds riding on a genuinely close game."
+              + (f" Win chances {m['win_prob'][0]} / {m['win_prob'][1]}." if m["win_prob"] else "")]
+    L += ["", "## Closing reflection", "",
+          "- One punchy line per franchise on where they stand, then tease the matchup of the week.", ""]
     if STYLE.exists():
-        L += ["---", "", "## Show style notes", "", STYLE.read_text(encoding="utf-8").strip(), ""]
+        L += ["---", "", "## Show format and voice", "", STYLE.read_text(encoding="utf-8").strip(), ""]
     return "\n".join(L)
 
 
 def prompt_txt(b):
-    return (f"Two hosts recap Week {b['mp']} of our 8-team fantasy basketball league ({b['league']}). "
-            "Follow the run of show in order: headline, every matchup, luck, coaching blunders, breakouts and busts, "
-            "playoff odds, injuries/pickups, next week's preview, predictions. Use ONLY numbers from the source; "
-            "never invent stats. Refer to managers by team name. Fun, trash-talky, sports-radio energy; "
-            "roast bad lineup calls. About 12-15 minutes.")
+    return (f"Two hosts recap Week {b['mp']} of our fantasy basketball league like a sports-drama podcast. "
+            "Give the week a themed title. Go franchise by franchise in the source's order: a headline for each, "
+            "what happened, callbacks to their history and running storylines, a foreshadow for next week. "
+            "Then the tier rankings and a closing one-liner per team. Use ONLY numbers from the source. "
+            "Say team names, never real names. About 13-16 minutes.")
 
 
 def claude_rewrite(src):

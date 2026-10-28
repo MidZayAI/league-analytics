@@ -1,0 +1,43 @@
+{
+  "_about": "Running storylines per franchise, keyed by ESPN owner id (team names change every year). Qualitative only: every number in an episode comes from the league data. Edit freely.",
+  "{B560655B-0257-4F6D-802F-A70599E2B05E}": {
+    "also_known_as": ["Colorado Kobes", "John Hopkins Hospital"],
+    "identity": "The regular-season merchants: the most regular-season wins in league history and still no title. Elite rosters undone by injuries every spring, a.k.a. the Hospital Curse.",
+    "threads": ["Swung big at the 2025-26 deadline, trading for Luka Doncic in a blockbuster with Los Angeles Diode; it looked rushed once injuries hit.", "Can the machine finally turn regular-season dominance into a ring?"]
+  },
+  "{92E371C5-100E-46E9-A5D4-91BE1DF96907}": {
+    "also_known_as": ["KnicksKoolKing", "Derrick White", "Mid Cervantes", "This mf BUNS", "BlackJohnson"],
+    "identity": "The dynasty: the league's first back-to-back champion (2023-24 and 2024-25). Championship DNA, relentless waiver work, slow starts followed by spring surges.",
+    "threads": ["The three-peat chase fell short in 2025-26.", "Never count them out: they have climbed out of slow starts before, including in their 2023-24 title season.", "Now rebranded as Cornell Medical Center — a hospital name, in a league where the Hospital Curse belongs to someone else."]
+  },
+  "{85DD3B8B-66DA-4AF8-B656-35EECB5FA797}": {
+    "also_known_as": ["Wemby is the Real #1", "F THE PHX SUNS"],
+    "identity": "Once the league's chaos agent, rebuilt into the king of consistency: the highest floor, depth that survives injuries, always searching for the explosion week.",
+    "threads": ["The 'grandpa fade': strong starts that drift away.", "Traded for Giannis in 2025-26 to finally raise the ceiling."]
+  },
+  "{31D6C56C-1B49-4A55-BDEA-CFEE6929B1EE}": {
+    "also_known_as": ["America's Team"],
+    "identity": "America's Team, with the clutch gene: won the 2022-23 title as a Cinderella with a losing regular-season record, reached the 2023-24 final, and owns the best playoff scoring in league history. Slow starts, never counted out.",
+    "threads": ["Traded Luka Doncic away in 2025-26 for depth and availability, then posted the best single week of that season.", "Every year the same script: early doubts, midseason resurrection."]
+  },
+  "{49256580-A795-465F-B350-41CE0D41D15C}": {
+    "also_known_as": [],
+    "identity": "The Complex Way: the league's first champion (2021-22). Methodical, deep, no wasted roster spots — the safest playoff bet in the league.",
+    "threads": ["Back-to-back finals losses in 2024-25 and 2025-26: always one game short.", "The only team with two 1,600-point weeks in 2025-26."]
+  },
+  "{B6615023-2FF1-4A46-AE49-1B59F9C30CA9}": {
+    "also_known_as": [],
+    "identity": "The league's self-proclaimed unlucky franchise: feast-or-famine rosters, injury-prone anchors, seismic single weeks and soul-crushing lows.",
+    "threads": ["Finished last in 2025-26.", "Every hopeful start has ended in regression — is this the year the coin lands heads?"]
+  },
+  "{940B284E-DC84-4B5C-9B2D-399F0FB41517}": {
+    "also_known_as": [],
+    "identity": "The league's Jekyll-and-Hyde: unbeatable when active on the wire, invisible when they go quiet. Climbed out of back-to-back basement seasons in 2022-23 and 2023-24.",
+    "threads": ["Hot starts that fizzle: a strong early record collapsed in 2024-25, and in 2025-26 they held the #1 seed at the trade deadline before fading.", "Which version shows up this year — the operator or the sleepwalker?"]
+  },
+  "{8C376D24-B8B2-4963-986C-6392FAE80F2C}": {
+    "also_known_as": [],
+    "identity": "The new franchise: joined for 2026-27, taking the seat of FREEDUB, the 2025-26 champion who left the league. No history, no curses, no excuses.",
+    "threads": ["Nobody is defending a title this year: the throne is empty.", "Every week is the first chapter of their league history."]
+  }
+}
