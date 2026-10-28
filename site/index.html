@@ -70,7 +70,7 @@
   .nav-item:hover { background: var(--wash); color: var(--ink); }
   .nav-item.active { background: var(--accent-wash); color: var(--ink); }
   .nav-item.active svg { color: var(--s1); }
-  .bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr);
+  .bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr);
                 padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--page) 92%, transparent);
                 backdrop-filter: blur(12px); border-top: 1px solid var(--border); }
   .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: var(--muted); }
@@ -1422,6 +1422,62 @@
 
     </div>
 
+    <!-- ============ PODCAST ============ -->
+    <section x-show="section === 'podcast'" class="space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <div class="label">Weekly recap show</div>
+          <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5">League podcast</h1>
+        </div>
+        <button class="week-chip" x-show="podcast" @click="podCopy('feed', podcast.feed)"
+                x-text="podCopied === 'feed' ? 'Feed link copied' : 'Subscribe (copy feed link)'"></button>
+      </div>
+      <div class="card text-sm text-ink2" x-show="!podcast">The podcast appears after the first week of the season wraps up.</div>
+
+      <template x-for="(e, i) in podcast?.episodes || []" :key="e.slug">
+        <div class="card">
+          <div class="flex items-baseline justify-between gap-2">
+            <h3 x-text="`${e.title} · ${fmt.seasonLabel(e.season)}`"></h3>
+            <span class="text-[11.5px] text-muted shrink-0" x-text="[podDuration(e.duration), fmt.date((e.published || '').slice(0, 10))].filter(Boolean).join(' · ')"></span>
+          </div>
+          <div class="sub mt-0.5" x-text="e.notes"></div>
+          <audio class="w-full mt-3" controls :preload="i === 0 ? 'metadata' : 'none'" :src="e.file"></audio>
+        </div>
+      </template>
+      <div class="card text-sm text-ink2" x-show="podcast && !podcast.episodes.length">No episodes published yet.</div>
+
+      <template x-if="podNext">
+        <div class="card">
+          <h3 class="mb-0.5" x-text="`Make the Week ${podNext.mp} episode`"></h3>
+          <div class="sub mb-3">The episode pack is ready: every stat in it comes from the league data. Four steps, about five minutes.</div>
+          <ol class="space-y-2.5 text-sm">
+            <li class="flex gap-3"><span class="label w-5 shrink-0">1</span>
+              <div class="min-w-0">Check the run of show, and edit it if you want to add jokes or cut anything.
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  <button class="week-chip" @click="podToggleSource(podNext)" x-text="podSourceOpen ? 'Hide' : 'Preview'"></button>
+                  <a class="week-chip" :href="podEditUrl(podNext)" target="_blank" rel="noopener">Edit on GitHub</a>
+                </div></div></li>
+            <li class="flex gap-3"><span class="label w-5 shrink-0">2</span>
+              <div class="min-w-0">In <a class="underline" href="https://notebooklm.google.com" target="_blank" rel="noopener">NotebookLM</a>, make a new notebook and add the source file.
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  <a class="week-chip" :href="podNext.source + '?v=' + podNext.sha" :download="`week-${podNext.mp}-source.md`">Download source</a>
+                </div></div></li>
+            <li class="flex gap-3"><span class="label w-5 shrink-0">3</span>
+              <div class="min-w-0">Audio Overview → Customize: choose the long length, paste the prompt, generate.
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  <button class="week-chip" @click="podCopy('prompt', podNext.prompt)" x-text="podCopied === 'prompt' ? 'Copied' : 'Copy prompt'"></button>
+                </div></div></li>
+            <li class="flex gap-3"><span class="label w-5 shrink-0">4</span>
+              <div class="min-w-0">Download the audio and upload it here (any file name; under 25 MB). It goes live on the next refresh.
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  <a class="week-chip" :href="podUploadUrl()" target="_blank" rel="noopener">Upload audio</a>
+                </div></div></li>
+          </ol>
+          <pre x-show="podSourceOpen" class="mt-3 p-3 rounded-xl text-[12px] leading-relaxed whitespace-pre-wrap overflow-auto max-h-[28rem]" style="background: var(--wash)" x-text="podSource || 'Loading…'"></pre>
+        </div>
+      </template>
+    </section>
+
     <!-- ============ HISTORY ============ -->
     <section x-show="page === 'franchises'" class="space-y-5">
       <div>
@@ -1571,7 +1627,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=c25a375bc0"></script>
+<script src="js/core.js?v=50ef00f807"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=02bc8618fb"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
@@ -1579,7 +1635,8 @@
 <script src="js/history.js?v=428d3cc680"></script>
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
-<script src="js/app.js?v=f5aa1e9fb0"></script>
+<script src="js/podcast.js?v=c5eaa3076d"></script>
+<script src="js/app.js?v=bded5916f8"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>

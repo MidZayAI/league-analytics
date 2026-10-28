@@ -31,6 +31,7 @@ const SECTIONS = [
   { id: 'teams', label: 'Teams', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9c1-4 4-6 7-6s6 2 7 6' },
   { id: 'league', label: 'League', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
   { id: 'history', label: 'History', icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-3-6.7M21 4v4h-4' },
+  { id: 'podcast', label: 'Podcast', icon: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3' },
 ];
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
@@ -68,6 +69,7 @@ window.Core = {
     await this.route();
     this.loadOdds();
     this.loadInjuries();
+    this.loadPodcast();
     // keep "updated X min ago" current, and pick up new refreshes without a reload
     setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
     setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
@@ -90,6 +92,7 @@ window.Core = {
       if (followLive && this.live?.active) this.weekSel = this.live.mp;
       this.loadOdds();
       this.loadInjuries();
+      this.loadPodcast();
     } catch (e) { /* offline or mid-deploy: try again next tick */ }
   },
   ago(iso) {
@@ -131,6 +134,8 @@ window.Core = {
       const t = this.S?.teams.find((x) => x.owner_id === owner);
       Object.assign(this, { section: 'teams', page: 'team', teamOwner: owner, ownerSel: owner });
       if (t) this.teamSel = t.team_id;
+    } else if (sec === 'podcast') {
+      Object.assign(this, { section: 'podcast', page: 'podcast' });
     } else if (sec === 'history') {
       Object.assign(this, { section: 'history', page: 'franchises' });
     } else {
