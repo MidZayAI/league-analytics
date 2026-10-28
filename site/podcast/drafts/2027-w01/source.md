@@ -79,14 +79,14 @@ All-play record = how this week's score would have done against every other team
 7. Los ye 0-1 (1060 points for)
 8. Los Angeles Diode 0-1 (1043 points for)
 
-- Wembanyahus: 89% playoffs (down 4 percentage points since last week), 20% title
 - im tired grandpa: 89% playoffs (up 2 percentage points since last week), 18% title
-- LA Complex: 80% playoffs (down 3 percentage points since last week), 14% title
+- Wembanyahus: 88% playoffs (down 5 percentage points since last week), 21% title
+- LA Complex: 80% playoffs (down 2 percentage points since last week), 14% title
 - Julian's Scary Team: 77% playoffs (up 22 percentage points since last week), 10% title
-- Cornell Medical Center: 75% playoffs (down 1 percentage points since last week), 10% title
-- Los Angeles Diode: 73% playoffs (down 11 percentage points since last week), 11% title
-- B2-Bombers: 73% playoffs (down 1 percentage points since last week), 12% title
-- Los ye: 44% playoffs (down 5 percentage points since last week), 5% title
+- Cornell Medical Center: 76% playoffs, 10% title
+- Los Angeles Diode: 72% playoffs (down 12 percentage points since last week), 11% title
+- B2-Bombers: 72% playoffs (down 2 percentage points since last week), 12% title
+- Los ye: 46% playoffs (down 4 percentage points since last week), 5% title
 
 ## 7. Injury report and waiver wire
 
@@ -102,10 +102,10 @@ All-play record = how this week's score would have done against every other team
 
 ## 8. Week 2 preview
 
-- Game of the week: im tired grandpa vs Los ye: projected 1496–1232. Win chances 95% / 5%. All-time series 12-1. Win vs loss swings playoff odds by 8 / 15 percentage points.
-- LA Complex vs Los Angeles Diode: projected 1417–1480. Win chances 37% / 63%. All-time series 10-6. Win vs loss swings playoff odds by 10 / 12 percentage points.
-- B2-Bombers vs Julian's Scary Team: projected 1361–1349. Win chances 53% / 47%. Win vs loss swings playoff odds by 10 / 11 percentage points.
-- Cornell Medical Center vs Wembanyahus: projected 1349–1432. Win chances 31% / 69%. All-time series 3-10. Win vs loss swings playoff odds by 10 / 6 percentage points.
+- Game of the week: im tired grandpa vs Los ye: projected 1496–1230. Win chances 95% / 5%. All-time series 12-1. Win vs loss swings playoff odds by 12 / 13 percentage points.
+- B2-Bombers vs Julian's Scary Team: projected 1358–1349. Win chances 51% / 49%. Win vs loss swings playoff odds by 12 / 11 percentage points.
+- LA Complex vs Los Angeles Diode: projected 1421–1482. Win chances 37% / 63%. All-time series 10-6. Win vs loss swings playoff odds by 9 / 13 percentage points.
+- Cornell Medical Center vs Wembanyahus: projected 1351–1431. Win chances 32% / 68%. All-time series 3-10. Win vs loss swings playoff odds by 11 / 8 percentage points.
 
 ## 9. Close: predictions and one-liners
 

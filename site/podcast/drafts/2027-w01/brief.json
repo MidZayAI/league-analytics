@@ -503,21 +503,21 @@
  "records": [],
  "odds": [
   {
-   "team": "Wembanyahus",
+   "team": "im tired grandpa",
    "playoff": "89%",
-   "title": "20%",
-   "playoff_change": -4,
-   "title_change": -5,
+   "title": "18%",
+   "playoff_change": 2,
+   "title_change": 3,
    "proj_record": "11 wins",
    "clinched": false,
    "eliminated": false
   },
   {
-   "team": "im tired grandpa",
-   "playoff": "89%",
-   "title": "18%",
-   "playoff_change": 2,
-   "title_change": 2,
+   "team": "Wembanyahus",
+   "playoff": "88%",
+   "title": "21%",
+   "playoff_change": -5,
+   "title_change": -4,
    "proj_record": "11 wins",
    "clinched": false,
    "eliminated": false
@@ -526,7 +526,7 @@
    "team": "LA Complex",
    "playoff": "80%",
    "title": "14%",
-   "playoff_change": -3,
+   "playoff_change": -2,
    "title_change": -1,
    "proj_record": "10 wins",
    "clinched": false,
@@ -537,16 +537,16 @@
    "playoff": "77%",
    "title": "10%",
    "playoff_change": 22,
-   "title_change": 6,
+   "title_change": 5,
    "proj_record": "10 wins",
    "clinched": false,
    "eliminated": false
   },
   {
    "team": "Cornell Medical Center",
-   "playoff": "75%",
+   "playoff": "76%",
    "title": "10%",
-   "playoff_change": -1,
+   "playoff_change": 0,
    "title_change": 1,
    "proj_record": "9 wins",
    "clinched": false,
@@ -554,9 +554,9 @@
   },
   {
    "team": "Los Angeles Diode",
-   "playoff": "73%",
+   "playoff": "72%",
    "title": "11%",
-   "playoff_change": -11,
+   "playoff_change": -12,
    "title_change": -5,
    "proj_record": "9 wins",
    "clinched": false,
@@ -564,9 +564,9 @@
   },
   {
    "team": "B2-Bombers",
-   "playoff": "73%",
+   "playoff": "72%",
    "title": "12%",
-   "playoff_change": -1,
+   "playoff_change": -2,
    "title_change": 1,
    "proj_record": "9 wins",
    "clinched": false,
@@ -574,9 +574,9 @@
   },
   {
    "team": "Los ye",
-   "playoff": "44%",
+   "playoff": "46%",
    "title": "5%",
-   "playoff_change": -5,
+   "playoff_change": -4,
    "title_change": 0,
    "proj_record": "7 wins",
    "clinched": false,
@@ -595,16 +595,35 @@
    ],
    "proj": [
     1496,
-    1232
+    1230
    ],
    "playoff_swing": [
-    8,
-    15
+    12,
+    13
    ],
    "series": {
     "w": 12,
     "l": 1
    }
+  },
+  {
+   "teams": [
+    "B2-Bombers",
+    "Julian's Scary Team"
+   ],
+   "win_prob": [
+    "51%",
+    "49%"
+   ],
+   "proj": [
+    1358,
+    1349
+   ],
+   "playoff_swing": [
+    12,
+    11
+   ],
+   "series": null
   },
   {
    "teams": [
@@ -616,12 +635,12 @@
     "63%"
    ],
    "proj": [
-    1417,
-    1480
+    1421,
+    1482
    ],
    "playoff_swing": [
-    10,
-    12
+    9,
+    13
    ],
    "series": {
     "w": 10,
@@ -630,39 +649,20 @@
   },
   {
    "teams": [
-    "B2-Bombers",
-    "Julian's Scary Team"
-   ],
-   "win_prob": [
-    "53%",
-    "47%"
-   ],
-   "proj": [
-    1361,
-    1349
-   ],
-   "playoff_swing": [
-    10,
-    11
-   ],
-   "series": null
-  },
-  {
-   "teams": [
     "Cornell Medical Center",
     "Wembanyahus"
    ],
    "win_prob": [
-    "31%",
-    "69%"
+    "32%",
+    "68%"
    ],
    "proj": [
-    1349,
-    1432
+    1351,
+    1431
    ],
    "playoff_swing": [
-    10,
-    6
+    11,
+    8
    ],
    "series": {
     "w": 3,
