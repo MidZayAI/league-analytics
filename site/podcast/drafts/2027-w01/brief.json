@@ -1,0 +1,754 @@
+{
+ "season": 2027,
+ "season_label": "2026-27",
+ "mp": 1,
+ "league": "Start Your Killers League",
+ "dates": [
+  "2026-10-20",
+  "2026-10-25"
+ ],
+ "games_cap": 33,
+ "playoff": false,
+ "games": [
+  {
+   "winner": "im tired grandpa",
+   "loser": "B2-Bombers",
+   "tie": false,
+   "score": [
+    1330,
+    1185
+   ],
+   "margin": 145,
+   "expected": [
+    1292,
+    1176
+   ],
+   "upset": false,
+   "series_before": {
+    "w": 10,
+    "l": 3
+   },
+   "winner_star": {
+    "name": "Ty Jerome",
+    "pts": 165,
+    "games": 3
+   },
+   "loser_star": {
+    "name": "Jalen Johnson",
+    "pts": 158,
+    "games": 3
+   },
+   "loser_bust": {
+    "name": "Giannis Antetokounmpo",
+    "pts": 128,
+    "games": 3,
+    "vs_usual": -34
+   },
+   "loser_bench_lost": 91,
+   "loser_lineup_cost_game": false
+  },
+  {
+   "winner": "LA Complex",
+   "loser": "Wembanyahus",
+   "tie": false,
+   "score": [
+    1207,
+    1138
+   ],
+   "margin": 69,
+   "expected": [
+    1207,
+    1139
+   ],
+   "upset": false,
+   "series_before": {
+    "w": 9,
+    "l": 8
+   },
+   "winner_star": {
+    "name": "Luka Doncic",
+    "pts": 162,
+    "games": 3
+   },
+   "loser_star": {
+    "name": "LaMelo Ball",
+    "pts": 109,
+    "games": 3
+   },
+   "loser_bust": {
+    "name": "Brandon Miller",
+    "pts": 60,
+    "games": 3,
+    "vs_usual": -110
+   },
+   "loser_bench_lost": 76,
+   "loser_lineup_cost_game": true
+  },
+  {
+   "winner": "Cornell Medical Center",
+   "loser": "Los ye",
+   "tie": false,
+   "score": [
+    1141,
+    1060
+   ],
+   "margin": 81,
+   "expected": [
+    1067,
+    1074
+   ],
+   "upset": true,
+   "series_before": {
+    "w": 8,
+    "l": 5
+   },
+   "winner_star": {
+    "name": "Walker Kessler",
+    "pts": 135,
+    "games": 3
+   },
+   "loser_star": {
+    "name": "Cade Cunningham",
+    "pts": 134,
+    "games": 3
+   },
+   "loser_bust": {
+    "name": "Myles Turner",
+    "pts": 55,
+    "games": 3,
+    "vs_usual": -35
+   },
+   "loser_bench_lost": 63,
+   "loser_lineup_cost_game": false
+  },
+  {
+   "winner": "Julian's Scary Team",
+   "loser": "Los Angeles Diode",
+   "tie": false,
+   "score": [
+    1049,
+    1043
+   ],
+   "margin": 6,
+   "expected": [
+    1087,
+    1044
+   ],
+   "upset": false,
+   "series_before": {
+    "w": 1,
+    "l": 0
+   },
+   "winner_star": {
+    "name": "Caleb Wilson",
+    "pts": 104,
+    "games": 3
+   },
+   "loser_star": {
+    "name": "Devin Booker",
+    "pts": 106,
+    "games": 2
+   },
+   "loser_bust": {
+    "name": "Anthony Edwards",
+    "pts": 131,
+    "games": 3,
+    "vs_usual": -68
+   },
+   "loser_bench_lost": 168,
+   "loser_lineup_cost_game": true
+  }
+ ],
+ "teams": [
+  {
+   "team": "im tired grandpa",
+   "pts": 1330,
+   "result": "W",
+   "rank": 1,
+   "allplay": "7-0",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 34,
+   "efficiency": 98,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Ryan Rollins",
+     "pts": 28
+    },
+    {
+     "name": "Collin Murray-Boyles",
+     "pts": 25
+    },
+    {
+     "name": "Rudy Gobert",
+     "pts": 25
+    }
+   ],
+   "expected": 1292,
+   "vs_expected": 38
+  },
+  {
+   "team": "LA Complex",
+   "pts": 1207,
+   "result": "W",
+   "rank": 2,
+   "allplay": "6-1",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 35,
+   "efficiency": 97,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Zach Edey",
+     "pts": 37
+    },
+    {
+     "name": "Jabari Smith Jr.",
+     "pts": 22
+    },
+    {
+     "name": "Mikal Bridges",
+     "pts": 16
+    }
+   ],
+   "expected": 1207,
+   "vs_expected": 0
+  },
+  {
+   "team": "B2-Bombers",
+   "pts": 1185,
+   "result": "L",
+   "rank": 3,
+   "allplay": "5-2",
+   "bad_beat": true,
+   "lucky_win": false,
+   "bench_lost": 91,
+   "efficiency": 93,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Toumani Camara",
+     "pts": 39
+    },
+    {
+     "name": "Derik Queen",
+     "pts": 34
+    },
+    {
+     "name": "Josh Hart",
+     "pts": 32
+    }
+   ],
+   "expected": 1176,
+   "vs_expected": 9
+  },
+  {
+   "team": "Cornell Medical Center",
+   "pts": 1141,
+   "result": "W",
+   "rank": 4,
+   "allplay": "4-3",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 74,
+   "efficiency": 94,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Kel'el Ware",
+     "pts": 43
+    },
+    {
+     "name": "Day'Ron Sharpe",
+     "pts": 32
+    },
+    {
+     "name": "Andrew Nembhard",
+     "pts": 25
+    }
+   ],
+   "expected": 1067,
+   "vs_expected": 74
+  },
+  {
+   "team": "Wembanyahus",
+   "pts": 1138,
+   "result": "L",
+   "rank": 5,
+   "allplay": "3-4",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 76,
+   "efficiency": 94,
+   "lineup_cost_game": true,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "De'Aaron Fox",
+     "pts": 42
+    },
+    {
+     "name": "Matas Buzelis",
+     "pts": 31
+    },
+    {
+     "name": "Jalen Suggs",
+     "pts": 22
+    }
+   ],
+   "expected": 1139,
+   "vs_expected": -1
+  },
+  {
+   "team": "Los ye",
+   "pts": 1060,
+   "result": "L",
+   "rank": 6,
+   "allplay": "2-5",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 63,
+   "efficiency": 94,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Jalen Brunson",
+     "pts": 39
+    },
+    {
+     "name": "OG Anunoby",
+     "pts": 27
+    },
+    {
+     "name": "Devin Vassell",
+     "pts": 20
+    }
+   ],
+   "expected": 1074,
+   "vs_expected": -14
+  },
+  {
+   "team": "Julian's Scary Team",
+   "pts": 1049,
+   "result": "W",
+   "rank": 7,
+   "allplay": "1-6",
+   "bad_beat": false,
+   "lucky_win": true,
+   "bench_lost": 0,
+   "efficiency": 100,
+   "lineup_cost_game": false,
+   "over_cap": false,
+   "missed_starts": [],
+   "expected": 1087,
+   "vs_expected": -38
+  },
+  {
+   "team": "Los Angeles Diode",
+   "pts": 1043,
+   "result": "L",
+   "rank": 8,
+   "allplay": "0-7",
+   "bad_beat": false,
+   "lucky_win": false,
+   "bench_lost": 168,
+   "efficiency": 86,
+   "lineup_cost_game": true,
+   "over_cap": false,
+   "missed_starts": [
+    {
+     "name": "Jaden McDaniels",
+     "pts": 41
+    },
+    {
+     "name": "Jarrett Allen",
+     "pts": 40
+    },
+    {
+     "name": "Donovan Mitchell",
+     "pts": 36
+    }
+   ],
+   "expected": 1044,
+   "vs_expected": -2
+  }
+ ],
+ "high": "im tired grandpa",
+ "low": "Los Angeles Diode",
+ "breakouts": [
+  {
+   "name": "Dyson Daniels",
+   "team": "im tired grandpa",
+   "pts": 144,
+   "games": 3,
+   "vs_usual": 81
+  },
+  {
+   "name": "Lauri Markkanen",
+   "team": "Cornell Medical Center",
+   "pts": 96,
+   "games": 3,
+   "vs_usual": 72
+  },
+  {
+   "name": "Walker Kessler",
+   "team": "Cornell Medical Center",
+   "pts": 135,
+   "games": 3,
+   "vs_usual": 72
+  },
+  {
+   "name": "Ty Jerome",
+   "team": "im tired grandpa",
+   "pts": 165,
+   "games": 3,
+   "vs_usual": 63
+  }
+ ],
+ "busts": [
+  {
+   "name": "Brandon Miller",
+   "team": "Wembanyahus",
+   "pts": 60,
+   "games": 3,
+   "vs_usual": -110
+  },
+  {
+   "name": "Alperen Sengun",
+   "team": "LA Complex",
+   "pts": 126,
+   "games": 3,
+   "vs_usual": -81
+  },
+  {
+   "name": "Victor Wembanyama",
+   "team": "Wembanyahus",
+   "pts": 130,
+   "games": 3,
+   "vs_usual": -78
+  },
+  {
+   "name": "Anthony Edwards",
+   "team": "Los Angeles Diode",
+   "pts": 131,
+   "games": 3,
+   "vs_usual": -68
+  }
+ ],
+ "standings": [
+  {
+   "team": "im tired grandpa",
+   "w": 1,
+   "l": 0,
+   "pf": 1330,
+   "luck": 0
+  },
+  {
+   "team": "LA Complex",
+   "w": 1,
+   "l": 0,
+   "pf": 1207,
+   "luck": 0.1
+  },
+  {
+   "team": "Cornell Medical Center",
+   "w": 1,
+   "l": 0,
+   "pf": 1141,
+   "luck": 0.4
+  },
+  {
+   "team": "Julian's Scary Team",
+   "w": 1,
+   "l": 0,
+   "pf": 1049,
+   "luck": 0.9
+  },
+  {
+   "team": "B2-Bombers",
+   "w": 0,
+   "l": 1,
+   "pf": 1185,
+   "luck": -0.7
+  },
+  {
+   "team": "Wembanyahus",
+   "w": 0,
+   "l": 1,
+   "pf": 1138,
+   "luck": -0.4
+  },
+  {
+   "team": "Los ye",
+   "w": 0,
+   "l": 1,
+   "pf": 1060,
+   "luck": -0.3
+  },
+  {
+   "team": "Los Angeles Diode",
+   "w": 0,
+   "l": 1,
+   "pf": 1043,
+   "luck": 0
+  }
+ ],
+ "records": [],
+ "odds": [
+  {
+   "team": "Wembanyahus",
+   "playoff": "89%",
+   "title": "20%",
+   "playoff_change": -4,
+   "title_change": -5,
+   "proj_record": "11 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "im tired grandpa",
+   "playoff": "89%",
+   "title": "18%",
+   "playoff_change": 2,
+   "title_change": 2,
+   "proj_record": "11 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "LA Complex",
+   "playoff": "80%",
+   "title": "14%",
+   "playoff_change": -3,
+   "title_change": -1,
+   "proj_record": "10 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "Julian's Scary Team",
+   "playoff": "77%",
+   "title": "10%",
+   "playoff_change": 22,
+   "title_change": 6,
+   "proj_record": "10 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "Cornell Medical Center",
+   "playoff": "75%",
+   "title": "10%",
+   "playoff_change": -1,
+   "title_change": 1,
+   "proj_record": "9 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "Los Angeles Diode",
+   "playoff": "73%",
+   "title": "11%",
+   "playoff_change": -11,
+   "title_change": -5,
+   "proj_record": "9 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "B2-Bombers",
+   "playoff": "73%",
+   "title": "12%",
+   "playoff_change": -1,
+   "title_change": 1,
+   "proj_record": "9 wins",
+   "clinched": false,
+   "eliminated": false
+  },
+  {
+   "team": "Los ye",
+   "playoff": "44%",
+   "title": "5%",
+   "playoff_change": -5,
+   "title_change": 0,
+   "proj_record": "7 wins",
+   "clinched": false,
+   "eliminated": false
+  }
+ ],
+ "next_week": [
+  {
+   "teams": [
+    "im tired grandpa",
+    "Los ye"
+   ],
+   "win_prob": [
+    "95%",
+    "5%"
+   ],
+   "proj": [
+    1496,
+    1232
+   ],
+   "playoff_swing": [
+    8,
+    15
+   ],
+   "series": {
+    "w": 12,
+    "l": 1
+   }
+  },
+  {
+   "teams": [
+    "LA Complex",
+    "Los Angeles Diode"
+   ],
+   "win_prob": [
+    "37%",
+    "63%"
+   ],
+   "proj": [
+    1417,
+    1480
+   ],
+   "playoff_swing": [
+    10,
+    12
+   ],
+   "series": {
+    "w": 10,
+    "l": 6
+   }
+  },
+  {
+   "teams": [
+    "B2-Bombers",
+    "Julian's Scary Team"
+   ],
+   "win_prob": [
+    "53%",
+    "47%"
+   ],
+   "proj": [
+    1361,
+    1349
+   ],
+   "playoff_swing": [
+    10,
+    11
+   ],
+   "series": null
+  },
+  {
+   "teams": [
+    "Cornell Medical Center",
+    "Wembanyahus"
+   ],
+   "win_prob": [
+    "31%",
+    "69%"
+   ],
+   "proj": [
+    1349,
+    1432
+   ],
+   "playoff_swing": [
+    10,
+    6
+   ],
+   "series": {
+    "w": 3,
+    "l": 10
+   }
+  }
+ ],
+ "injuries": {
+  "rostered": [
+   {
+    "name": "Kawhi Leonard",
+    "team": "Cornell Medical Center",
+    "status": "Out",
+    "back": "2026-11-23",
+    "fp": 47.2,
+    "who_benefits": []
+   },
+   {
+    "name": "Anthony Edwards",
+    "team": "Los Angeles Diode",
+    "status": "Out",
+    "back": "2026-12-21",
+    "fp": 44.3,
+    "who_benefits": [
+     "Ayo Dosunmu",
+     "Jaden McDaniels"
+    ]
+   },
+   {
+    "name": "Alperen Sengun",
+    "team": "LA Complex",
+    "status": "Out",
+    "back": "2026-10-30",
+    "fp": 42.8,
+    "who_benefits": [
+     "Clint Capela",
+     "Jae'Sean Tate"
+    ]
+   },
+   {
+    "name": "Lauri Markkanen",
+    "team": "Cornell Medical Center",
+    "status": "Day-To-Day",
+    "back": "2026-10-28",
+    "fp": 42.0,
+    "who_benefits": [
+     "Kyle Filipowski",
+     "Brice Sensabaugh"
+    ]
+   },
+   {
+    "name": "Jimmy Butler III",
+    "team": "Wembanyahus",
+    "status": "Out",
+    "back": "2027-01-02",
+    "fp": 39.1,
+    "who_benefits": []
+   },
+   {
+    "name": "Paolo Banchero",
+    "team": "Julian's Scary Team",
+    "status": "Out",
+    "back": "2026-11-22",
+    "fp": 37.7,
+    "who_benefits": [
+     "Franz Wagner",
+     "Tristan da Silva"
+    ]
+   }
+  ],
+  "pickups": [
+   {
+    "name": "Paul Reed",
+    "because": "Jalen Duren",
+    "bump": 3.4
+   },
+   {
+    "name": "Jaylin Williams",
+    "because": "Chet Holmgren",
+    "bump": 2.7
+   },
+   {
+    "name": "Jared McCain",
+    "because": "Jalen Williams",
+    "bump": 2.2
+   }
+  ]
+ }
+}
