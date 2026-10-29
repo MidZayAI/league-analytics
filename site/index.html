@@ -288,8 +288,8 @@
       <div class="text-[12px] text-muted" x-show="waivers && !waivers.sleeper_ok">Sleeper projections are unavailable right now; ranking uses our model only.</div>
 
       <div class="flex flex-wrap gap-1.5" x-show="waivers">
-        <template x-for="s in [['total', 'Both weeks'], ['this', wvWeekLabel('this')], ['next', wvWeekLabel('next')]]" :key="s[0]">
-          <button class="week-chip" :class="wvSort === s[0] && 'active'" @click="wvSort = s[0]" x-text="s[1]" x-show="s[0] === 'total' || waivers?.weeks?.[s[0]]"></button>
+        <template x-for="s in [['fpg', 'Both weeks'], ['this', wvWeekLabel('this')], ['next', wvWeekLabel('next')]]" :key="s[0]">
+          <button class="week-chip" :class="wvSort === s[0] && 'active'" @click="wvSort = s[0]" x-text="s[1]" x-show="s[0] === 'fpg' || waivers?.weeks?.[s[0]]"></button>
         </template>
         <span class="w-px mx-1" style="background: var(--grid)"></span>
         <template x-for="p in ['All', 'PG', 'SG', 'SF', 'PF', 'C']" :key="p">
@@ -297,51 +297,60 @@
         </template>
       </div>
 
-      <div class="card !p-0 overflow-hidden" x-show="waivers">
-        <div class="hidden sm:grid grid-cols-[1fr_88px_88px_72px] gap-2 px-4 py-2 label border-b" style="border-color: var(--grid)">
-          <span>Free agent</span><span class="text-right" x-text="wvWeekLabel('this')"></span>
-          <span class="text-right" x-text="wvWeekLabel('next')"></span><span class="text-right" x-text="wvTeam ? 'vs worst' : 'Total'"></span>
-        </div>
-        <template x-for="(r, i) in wvRows" :key="r.id">
-          <div class="border-b last:border-0" style="border-color: var(--grid)">
-            <button class="w-full text-left grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_88px_88px_72px] gap-2 items-center px-4 py-2.5" @click="wvOpen = wvOpen === r.id ? null : r.id">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="text-[11px] text-muted w-4 shrink-0" x-text="i + 1"></span>
-                <img class="hs w-10 h-10" :src="headshot(r.id)" alt="" loading="lazy" @error="$el.src = silhouette">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-semibold text-sm truncate" x-text="r.name"></span>
-                    <span class="text-[10px] font-bold down" x-show="wvInj(r)" x-text="wvInj(r)"></span>
-                    <span class="text-[10px] font-bold text-muted" x-show="r.status === 'WAIVERS'" title="On waivers: claim, not instant add">W</span>
+      <template x-for="group in [{ stash: false, title: '', rows: wvRows }, { stash: true, title: 'Injured stash', rows: wvStash }]" :key="group.stash">
+        <div x-show="waivers && group.rows.length" class="space-y-2">
+          <div x-show="group.stash">
+            <h3 x-text="group.title"></h3>
+            <div class="sub">Strong per-game value but expected to miss many of these games. Worth a bench spot only if you can wait.</div>
+          </div>
+          <div class="card !p-0 overflow-hidden">
+            <div class="hidden sm:grid grid-cols-[1fr_96px_96px_80px] gap-2 px-4 py-2 label border-b" style="border-color: var(--grid)">
+              <span>Free agent</span><span class="text-right" x-text="wvWeekLabel('this')"></span>
+              <span class="text-right" x-text="wvWeekLabel('next')"></span><span class="text-right" x-text="wvTeam ? 'vs worst' : 'FP / game'"></span>
+            </div>
+            <template x-for="(r, i) in group.rows" :key="r.id">
+              <div class="border-b last:border-0" style="border-color: var(--grid)">
+                <button class="w-full text-left grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_96px_96px_80px] gap-2 items-center px-4 py-2.5" @click="wvOpen = wvOpen === r.id ? null : r.id">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <span class="text-[11px] text-muted w-4 shrink-0" x-text="i + 1"></span>
+                    <img class="hs w-10 h-10" :src="headshot(r.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-semibold text-sm truncate" x-text="r.name"></span>
+                        <span class="text-[10px] font-bold down" x-show="wvInj(r)" x-text="wvInj(r)"></span>
+                        <span class="text-[10px] font-bold text-muted" x-show="r.status === 'WAIVERS'" title="On waivers: claim, not instant add">W</span>
+                      </div>
+                      <div class="text-[11px] text-muted truncate"
+                           x-text="[r.team, r.pos, r.owned != null ? `${Math.round(r.owned)}% owned` + (r.owned_chg ? ` (${r.owned_chg > 0 ? '+' : ''}${fmt.n(r.owned_chg, 1)})` : '') : '', r.why ? `+${fmt.n(r.boost, 1)} · ${r.why}` : ''].filter(Boolean).join(' · ')"></div>
+                    </div>
                   </div>
-                  <div class="text-[11px] text-muted truncate"
-                       x-text="[r.team, r.pos, r.owned != null ? `${Math.round(r.owned)}% owned` + (r.owned_chg ? ` (${r.owned_chg > 0 ? '+' : ''}${fmt.n(r.owned_chg, 1)})` : '') : '', r.why ? `+${fmt.n(r.boost, 1)} · ${r.why}` : ''].filter(Boolean).join(' · ')"></div>
+                  <div class="sm:hidden text-right">
+                    <div class="font-extrabold" :class="wvTeam && (wvUpgrade(r) > 0 ? 'up' : 'down')"
+                         x-text="wvTeam ? fmt.signed(wvUpgrade(r), 1) : fmt.n(wvFpg(r), 1)"></div>
+                    <div class="text-[10px] text-muted" x-text="(wvTeam ? 'vs worst · ' : 'FP/g · ') + (wvSort === 'fpg' ? games((r.this?.games || 0) + (r.next?.games || 0)) : games(r[wvSort]?.games))"></div>
+                  </div>
+                  <div class="hidden sm:block text-right"><div class="font-bold" x-text="fmt.n(r.this?.fpg, 1)"></div><div class="text-[10px] text-muted" x-text="games(r.this?.games)"></div></div>
+                  <div class="hidden sm:block text-right"><div class="font-bold" x-text="fmt.n(r.next?.fpg, 1)"></div><div class="text-[10px] text-muted" x-text="games(r.next?.games)"></div></div>
+                  <div class="hidden sm:block text-right font-extrabold" :class="wvTeam && (wvUpgrade(r) > 0 ? 'up' : 'down')"
+                       x-text="wvTeam ? fmt.signed(wvUpgrade(r), 1) : fmt.n(wvFpg(r), 1)"></div>
+                </button>
+                <div x-show="wvOpen === r.id" class="px-4 pb-3 text-[12px] text-ink2 space-y-1.5">
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">Our model</div><div class="font-bold" x-text="`${fmt.n(r.mu, 1)} /g`"></div></div>
+                    <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">Sleeper</div><div class="font-bold" x-text="r.sleeper != null ? `${fmt.n(r.sleeper, 1)} /g` : '–'"></div></div>
+                    <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">ESPN proj</div><div class="font-bold" x-text="r.espn != null ? `${fmt.n(r.espn, 1)} /g` : '–'"></div></div>
+                    <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">This season</div><div class="font-bold" x-text="r.avg != null ? `${fmt.n(r.avg, 1)} /g (${r.n} gp)` : '–'"></div></div>
+                  </div>
+                  <div x-text="`Expected to play about ${fmt.n(r.plays, 1)} of his ${(r.this?.games || 0) + (r.next?.games || 0)} games in these two weeks.`"></div>
+                  <div x-show="wvTeam && wvWeakest" x-text="wvWeakest ? `Compared per game with your weakest healthy player, ${wvWeakest.name} (${fmt.n(wvSort === 'fpg' ? wvWeakest.fpg : wvWeakest[wvSort], 1)} FP/g).` : ''"></div>
+                  <div x-show="r.outlook" class="leading-relaxed" x-text="r.outlook"></div>
                 </div>
               </div>
-              <div class="sm:hidden text-right">
-                <div class="font-extrabold" x-text="fmt.n(wvSort === 'total' ? r.total : r[wvSort]?.pts, 0)"></div>
-                <div class="text-[10px] text-muted" x-text="wvSort === 'total' ? games((r.this?.games || 0) + (r.next?.games || 0)) : games(r[wvSort]?.games)"></div>
-              </div>
-              <div class="hidden sm:block text-right"><div class="font-bold" x-text="fmt.n(r.this?.pts, 0)"></div><div class="text-[10px] text-muted" x-text="games(r.this?.games)"></div></div>
-              <div class="hidden sm:block text-right"><div class="font-bold" x-text="fmt.n(r.next?.pts, 0)"></div><div class="text-[10px] text-muted" x-text="games(r.next?.games)"></div></div>
-              <div class="hidden sm:block text-right font-extrabold" :class="wvTeam && (wvUpgrade(r) > 0 ? 'up' : 'down')"
-                   x-text="wvTeam ? fmt.signed(wvUpgrade(r), 0) : fmt.n(r.total, 0)"></div>
-            </button>
-            <div x-show="wvOpen === r.id" class="px-4 pb-3 text-[12px] text-ink2 space-y-1.5">
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">Our model</div><div class="font-bold" x-text="`${fmt.n(r.mu, 1)} /g`"></div></div>
-                <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">Sleeper</div><div class="font-bold" x-text="r.sleeper != null ? `${fmt.n(r.sleeper, 1)} /g` : '–'"></div></div>
-                <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">ESPN proj</div><div class="font-bold" x-text="r.espn != null ? `${fmt.n(r.espn, 1)} /g` : '–'"></div></div>
-                <div class="rounded-lg p-2" style="background: var(--wash)"><div class="label">This season</div><div class="font-bold" x-text="r.avg != null ? `${fmt.n(r.avg, 1)} /g (${r.n} gp)` : '–'"></div></div>
-              </div>
-              <div x-show="wvTeam && wvWeakest" class="sm:hidden" x-text="wvWeakest ? `vs your weakest (${wvWeakest.name}): ${fmt.signed(wvUpgrade(r), 0)} over both weeks` : ''"></div>
-              <div x-show="wvTeam && wvWeakest" class="hidden sm:block" x-text="wvWeakest ? `Compared with your weakest healthy player, ${wvWeakest.name}, over the same weeks.` : ''"></div>
-              <div x-show="r.outlook" class="leading-relaxed" x-text="r.outlook"></div>
-            </div>
+            </template>
           </div>
-        </template>
-      </div>
-      <div class="text-[11.5px] text-muted" x-show="waivers">Points = projected fantasy points from his games still to come, in this league&rsquo;s scoring. Tap a player for the breakdown.</div>
+        </div>
+      </template>
+      <div class="text-[11.5px] text-muted" x-show="waivers">Ranked by projected fantasy points per game he plays, in this league&rsquo;s scoring (ESPN default points). With the weekly games cap, per-game quality matters more than how many games he has. Tap a player for the breakdown.</div>
     </section>
 
     <!-- ============ INJURIES ============ -->
@@ -1631,7 +1640,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=e30ba1c7b1"></script>
+<script src="js/core.js?v=1897654d1a"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=02bc8618fb"></script>
 <script src="js/teams.js?v=c7000016bd"></script>
@@ -1639,7 +1648,7 @@
 <script src="js/history.js?v=428d3cc680"></script>
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
-<script src="js/waivers.js?v=512e3a2aff"></script>
+<script src="js/waivers.js?v=b90bd838ac"></script>
 <script src="js/app.js?v=9d0bcf28fe"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>

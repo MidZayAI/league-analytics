@@ -8,6 +8,7 @@ For every upcoming NBA game (not yet started) in the rest of this matchup week a
                 our model alone when Sleeper has no line for the game
   boost       = extra points while a key teammate sits (injuries.py, same as the injury page)
   P(plays)    = injury tag / ESPN return date / miss streak (injuries.play_p)
+Ranked by projected points per game played (the weekly games cap makes per-game quality what matters).
 Writes site/data/waivers.json; the first run of each week also stores a snapshot in
 data/history/waivers_{season}.json so the blend can be checked against what happened.
 """
@@ -29,6 +30,9 @@ SNAP = ROOT / "data" / "history" / f"waivers_{CURRENT}.json"
 MODEL_WEIGHT = 0.5
 CANDIDATES = 200   # free agents scored (by projection / season average)
 SHOWN = 60
+STASH_SHOWN = 10
+MIN_PLAYS = 1.0   # expected games played in the window to be ranked normally
+AVAILABLE_SHARE = 0.6  # expected to play at least this share of his games, or he's listed as a stash
 IR_SLOT = 13
 
 
@@ -56,8 +60,9 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
         mu, pro = _mu(p, repl, params), p.get("pro")
         out = {"mu": round(mu, 1)}
         sl_vals, best_boost = [], (0.0, None)
+        tot_val = tot_play = 0.0
         for wk, sps in weeks.items():
-            pts = games = 0.0
+            pts = games = plays = 0.0
             for sp in sps:
                 if pro not in t["pro_games"].get(sp, ()) or (sp == sp_now and starts.get((pro, sp), 0) <= now):
                     continue
@@ -73,8 +78,14 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
                 if sl and sl["min"] == 0:
                     play *= 0.25  # Sleeper doesn't expect him to play
                 pts += play * (MODEL_WEIGHT * mu + (1 - MODEL_WEIGHT) * expert + b)
+                plays += play
                 games += 1
-            out[wk] = {"games": int(games), "pts": round(pts, 1)}
+            # with a weekly games cap, a pickup's value is points per game played, not total volume
+            out[wk] = {"games": int(games), "plays": round(plays, 1), "pts": round(pts, 1),
+                       "fpg": round(pts / plays, 1) if plays > 0.05 else None}
+            tot_val, tot_play = tot_val + pts, tot_play + plays
+        out["fpg"] = round(tot_val / tot_play, 1) if tot_play > 0.05 else None
+        out["plays"] = round(tot_play, 1)
         out["sleeper"] = round(sum(sl_vals) / len(sl_vals), 1) if sl_vals else None
         out["boost"] = round(best_boost[0], 1) if best_boost[0] >= 0.5 else None
         out["why"] = best_boost[1] if best_boost[0] >= 0.5 else None
@@ -93,33 +104,41 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
                      "avg": round(p["avg"], 1) if p.get("avg") else None, "n": int(p.get("n") or 0),
                      "l15": round(p["l15"], 1) if p.get("l15") else None,
                      "outlook": p.get("outlook"), "total": round(tot, 1), **s})
-    rows.sort(key=lambda r: -r["total"])
+    # rank by projected points per game played; injured stash candidates (likely to miss many of their
+    # games in the window) come after everyone who should actually be playing
+    for r in rows:
+        games = sum(r.get(w, {}).get("games", 0) for w in weeks)
+        r["stash"] = r["plays"] < MIN_PLAYS or r["plays"] < AVAILABLE_SHARE * games
+    rows.sort(key=lambda r: (r["stash"], -(r["fpg"] or 0)))
 
-    # each league team's weakest healthy players over the same games, for "upgrade over your worst"
+    # each league team's weakest healthy players (lowest projected FP per game), for "upgrade over your worst"
     weakest = {}
     for aid, (tid, slot) in rostered.items():
         p = pool.get(aid)
         if not p or slot == IR_SLOT or not p.get("pro"):
             continue
         s = score(aid, p)
-        weakest.setdefault(tid, []).append({"id": aid, "name": p["name"], "this": s.get("this", {}).get("pts", 0),
-                                            "next": s.get("next", {}).get("pts", 0)})
+        if s["plays"] < MIN_PLAYS or s["fpg"] is None:
+            continue  # injured or no games: not who you'd drop for a per-game upgrade comparison
+        weakest.setdefault(tid, []).append({"id": aid, "name": p["name"], "fpg": s["fpg"],
+                                            "this": s.get("this", {}).get("fpg"), "next": s.get("next", {}).get("fpg")})
     for tid in weakest:
-        weakest[tid] = sorted(weakest[tid], key=lambda r: r["this"] + r["next"])[:3]
+        weakest[tid] = sorted(weakest[tid], key=lambda r: r["fpg"])[:3]
 
     out = {"updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mp": int(mp),
            "weeks": {w: {"mp": int(mp) + (w == "next"), "start": dates[sps[0]].isoformat(), "end": dates[sps[-1]].isoformat()}
                      for w, sps in weeks.items()},
            "sleeper_ok": bool(sleeper), "sleeper_match": round(match, 3), "model_weight": MODEL_WEIGHT,
-           "players": rows[:SHOWN], "weakest": weakest}
+           "players": [r for r in rows if not r["stash"]][:SHOWN] + [r for r in rows if r["stash"]][:STASH_SHOWN],
+           "weakest": weakest}
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
     snaps = json.loads(SNAP.read_text(encoding="utf-8")) if SNAP.exists() else {}
     if str(mp) not in snaps:  # first look at the week, before its games: the honest forecast to grade later
-        snaps[str(mp)] = {"ts": now, "players": [{k: r.get(k) for k in ("id", "mu", "sleeper", "espn", "this", "next")}
+        snaps[str(mp)] = {"ts": now, "players": [{k: r.get(k) for k in ("id", "mu", "sleeper", "espn", "fpg", "this", "next")}
                                                   for r in rows[:50]]}
         SNAP.parent.mkdir(parents=True, exist_ok=True)
         SNAP.write_text(json.dumps(snaps, separators=(",", ":")), encoding="utf-8")
-    top = ", ".join(f"{r['name']} {r['total']:.0f}" for r in rows[:5])
+    top = ", ".join(f"{r['name']} {r['fpg']}/g" for r in rows[:5])
     print(f"waivers: {len(rows)} free agents scored, Sleeper match {match:.0%}; top: {top}")
     if any(math.isnan(r["mu"]) for r in rows):
         print("waivers: warning, NaN projections")
