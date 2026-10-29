@@ -13,7 +13,8 @@ const GLOSSARY = {
   breakdown: 'Pregame expected → availability (who played) → roster moves → lineup & cap → breakouts (season level vs. expectation) → hot/cold (week-to-week swings). Always adds up to the real score.',
   sofar: 'The same breakdown for the days played so far this week.',
   odds: '10,000 simulations of the rest of the season: every remaining game played from each roster’s projected strength, this week’s game from the live forecast, then the playoff bracket. Ties in the standings use head-to-head record, then points for. Clinched/Eliminated are exact math, not simulations.',
-  injuries: 'Injuries: a player tagged OUT uses ESPN’s expected return date when there is one (otherwise how often players in the same spot have returned in past seasons). When a key teammate is likely to sit, players who historically gain from his absence get a boost — half of their measured with/without-him gain, which tested best against later games.',
+  injuries: 'Injuries: a player tagged OUT uses ESPN’s expected return date when there is one (otherwise how often players in the same spot have returned in past seasons). When a key teammate is likely to sit, players who historically gain from his absence get a boost — half of their measured with/without-him gain, which tested best against later games. Teammates with no history together (trades, signings, rookies) get an estimate from position and role: a same-position backup gains most.',
+  waivers: 'Waiver wire: every free agent’s games still to come this week and next. Each game = chance he plays × (half our model — ESPN’s projection pulled toward his actual season and last 15 days — and half Sleeper’s projection for that specific game, re-scored with this league’s settings) + any boost from an injured teammate. “Compare with my team” shows the gain over your weakest healthy player across the same games.',
   stakes: 'Odds if this week’s game is won vs. lost, from the same 10,000 season simulations (the live matchup forecast decides this week). The gap is how much this game matters.',
   rooting: 'For every other game this week: how much your playoff odds move depending on who wins. Root for the team listed; the number is the swing in percentage points.',
   seedgrid: 'Chance of finishing at each seed. Darker = more likely. Seeds 1-2 get a first-round bye; 1-6 make the playoffs.',
@@ -31,7 +32,6 @@ const SECTIONS = [
   { id: 'teams', label: 'Teams', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9c1-4 4-6 7-6s6 2 7 6' },
   { id: 'league', label: 'League', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
   { id: 'history', label: 'History', icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-3-6.7M21 4v4h-4' },
-  { id: 'podcast', label: 'Podcast', icon: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3' },
 ];
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
@@ -69,7 +69,7 @@ window.Core = {
     await this.route();
     this.loadOdds();
     this.loadInjuries();
-    this.loadPodcast();
+    this.loadWaivers();
     // keep "updated X min ago" current, and pick up new refreshes without a reload
     setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
     setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
@@ -92,7 +92,7 @@ window.Core = {
       if (followLive && this.live?.active) this.weekSel = this.live.mp;
       this.loadOdds();
       this.loadInjuries();
-      this.loadPodcast();
+      this.loadWaivers();
     } catch (e) { /* offline or mid-deploy: try again next tick */ }
   },
   ago(iso) {
@@ -118,6 +118,8 @@ window.Core = {
       const target = a ? +a : (this.live?.active ? this.live.season : this.season);
       if (target !== this.season) await this.selectSeason(target);
       Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
+    } else if (sec === 'waivers') {
+      Object.assign(this, { section: 'matchups', page: 'waivers' });
     } else if (sec === 'injuries') {
       Object.assign(this, { section: 'matchups', page: 'injuries' });
     } else if (sec === 'league') {
@@ -134,8 +136,6 @@ window.Core = {
       const t = this.S?.teams.find((x) => x.owner_id === owner);
       Object.assign(this, { section: 'teams', page: 'team', teamOwner: owner, ownerSel: owner });
       if (t) this.teamSel = t.team_id;
-    } else if (sec === 'podcast') {
-      Object.assign(this, { section: 'podcast', page: 'podcast' });
     } else if (sec === 'history') {
       Object.assign(this, { section: 'history', page: 'franchises' });
     } else {

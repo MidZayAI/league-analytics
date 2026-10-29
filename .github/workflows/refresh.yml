@@ -9,9 +9,6 @@ on:
     # ...plus daytime runs for injury news and lineup changes
     - cron: "17 12,15,18,21 * * *"
   workflow_dispatch:
-  # a podcast episode uploaded through GitHub goes live right away
-  push:
-    paths: ["site/podcast/episodes/**"]
 
 permissions:
   contents: write
@@ -45,28 +42,19 @@ jobs:
           key: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/injuries.py', 'pipeline/usage.py', 'pipeline/model_params.json', 'requirements.txt') }}-${{ github.run_id }}
           restore-keys: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/injuries.py', 'pipeline/usage.py', 'pipeline/model_params.json', 'requirements.txt') }}-
 
-      # podcast uploads that aren't mp3 yet (or new episodes needing a duration) need ffmpeg
-      - name: Install ffmpeg if a new podcast episode needs it
-        run: |
-          for f in site/podcast/episodes/*; do
-            case "$f" in *.mp3) [ -e "${f%.mp3}.json" ] && continue ;; *.json|*'*') continue ;; esac
-            sudo apt-get install -y -qq ffmpeg > /dev/null && break
-          done
-
       - name: Fetch from ESPN and build analytics
         env:
           LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
           ESPN_S2: ${{ secrets.ESPN_S2 }}
           SWID: ${{ secrets.SWID }}
           SEASON: ${{ vars.SEASON || '2027' }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline/build.py --fetch
 
       - name: Commit refreshed data
         run: |
           git config user.name "league-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/raw data/history site/data site/img site/podcast site/index.html config
+          git add data/raw data/history site/data site/img site/index.html config
           git diff --cached --quiet || git commit -m "Data refresh $(date -u +'%Y-%m-%d %H:%M') UTC"
           # someone else may have pushed meanwhile; replay this refresh on top (its data wins)
           for i in 1 2 3; do

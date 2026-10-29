@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expected  # noqa: E402
 import injuries  # noqa: E402
 import nba_logs  # noqa: E402
+import pool as player_pool  # noqa: E402
 import season_sim  # noqa: E402
+import waivers  # noqa: E402
 import projections as pj  # noqa: E402
 from espn_client import ESPNClient, ROOT  # noqa: E402
 from normalize import RAW, cached_seasons, load_season  # noqa: E402
@@ -85,16 +87,16 @@ class InjuryAvailability:
     Uses the league's injury tags, ESPN's NBA injury feed (status + expected return date), each
     player's current miss streak and the historical return curve (injuries.py)."""
 
-    def __init__(self, roster, dates, sp_now, starts, pro_games, now):
+    def __init__(self, roster, dates, sp_now, starts, pro_games, now, pool=None):
         nba_logs.fetch_season(CURRENT - 1)
         nba_logs.fetch_season(CURRENT)
         self.dates, self.curve = dates, pj.PARAMS.get("return_curve")
         today = dates[sp_now].isoformat()
-        cache = ROOT / "data" / "tidy" / f"injstate_v2_{CURRENT}_{today}.pkl"  # bump v when InjuryState changes
+        cache = ROOT / "data" / "tidy" / f"injstate_v3_{CURRENT}_{today}.pkl"  # bump v when InjuryState changes
         if cache.exists():
             self.state = pd.read_pickle(cache)
         else:
-            self.state = injuries.InjuryState(CURRENT, today)
+            self.state = injuries.InjuryState(CURRENT, today, pool=pool)
             cache.parent.mkdir(parents=True, exist_ok=True)
             pd.to_pickle(self.state, cache)
         try:
@@ -153,7 +155,7 @@ MIN_BUMP_SHOWN = 0.75    # beneficiaries shown: model boost of 0.75+ FP/game whi
 
 
 def write_injuries(avail, roster, abbrev, sp_now):
-    """Injury report for the site: every relevant injured NBA player, who benefits, free-agent pickups."""
+    """Injury report for the site: every relevant injured NBA player and who benefits while he sits."""
     st = avail.state
     owner = {e["playerId"]: tm["id"] for tm in roster["teams"] for e in tm["roster"]["entries"]}
     pro_of = {e["playerId"]: e["playerPoolEntry"]["player"].get("proTeamId") for tm in roster["teams"] for e in tm["roster"]["entries"]}
@@ -171,7 +173,7 @@ def write_injuries(avail, roster, abbrev, sp_now):
         sps = sorted(sp for (q, sp), h in avail.game_no.items() if q == pro)
         return sps[0] if sps else None
 
-    players, pickups = [], []
+    players = []
     for aid, f in injured.items():
         fp, pro = st.fp.get(aid, 0.0), st.team.get(aid) or pro_of.get(aid)
         if fp < MIN_FP_SHOWN and aid not in owner:
@@ -186,23 +188,18 @@ def write_injuries(avail, roster, abbrev, sp_now):
             ev = st.evidence.get((aid, t_aid), {})
             row = {"id": t_aid, "name": st.name.get(t_aid), "pos": st.pos.get(t_aid), "owner": owner.get(t_aid),
                    "bump": round(b, 1), "fp": round(st.fp.get(t_aid, 0.0), 1), "n": ev.get("n"),
-                   "min_in": ev.get("min_in"), "min_out": ev.get("min_out"), "season": ev.get("season")}
+                   "min_in": ev.get("min_in"), "min_out": ev.get("min_out"), "season": ev.get("season"),
+                   "role": bool(ev.get("role")), "next": round(b * sit_more, 1)}
             bens.append(row)
-            if owner.get(t_aid) is None:
-                pickups.append({**row, "because": st.name.get(aid), "because_id": aid,
-                                "next": round(b * sit_more, 1)})
         players.append({"id": aid, "name": st.name.get(aid), "team": abbrev.get(pro, ""), "pos": st.pos.get(aid),
                         "status": f["status"], "return": f.get("return"), "streak": st.streak.get(aid, 0),
                         "fp": round(fp, 1), "owner": owner.get(aid), "p_next": p_next, "helps": bens[:5]})
     players.sort(key=lambda r: (r["owner"] is None, -r["fp"]))
-    best = {}
-    for pk in sorted(pickups, key=lambda r: -r["next"]):
-        best.setdefault(pk["id"], pk)  # one entry per free agent, his biggest reason
     INJ_OUT.write_text(json.dumps({
-        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "players": players, "pickups": [x for x in best.values() if x["next"] >= 0.5][:8],
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "players": players,
     }, default=float, separators=(",", ":")), encoding="utf-8")
-    print(f"injuries: {len(players)} injured players shown, {len(best)} free-agent beneficiaries")
+    print(f"injuries: {len(players)} injured players shown, "
+          f"{sum(1 for p in players for h in p['helps'] if h['role'])} role-based beneficiaries")
 
 
 def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
@@ -283,7 +280,12 @@ def main():
     games_now = nba_game_status(dates[sp_now])  # today's NBA games: not started / in progress / final
 
     roster = c.league(CURRENT, ["mRoster"], scoring_period=sp_now)
-    avail = InjuryAvailability(roster, dates, sp_now, starts, t["pro_games"], now)
+    try:
+        pool = player_pool.fetch_pool()
+    except Exception as e:  # the pool only sharpens baselines; never block the live forecast on it
+        print(f"pool unavailable: {e}")
+        pool = None
+    avail = InjuryAvailability(roster, dates, sp_now, starts, t["pro_games"], now, pool)
     daily = t["daily"]
     names = dict(zip(t["teams"].team_id, t["teams"].name))
     rng = np.random.default_rng()
@@ -420,6 +422,11 @@ def main():
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
     write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail)
     write_injuries(avail, roster, abbrev, sp_now)
+    if pool:
+        try:
+            waivers.build(pool, abbrev, avail, t, int(mp), sp_now, starts, now, roster, model.repl, dates)
+        except Exception as e:  # never fail the live forecast over the waiver list
+            print(f"waivers skipped: {e}")
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 

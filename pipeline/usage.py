@@ -97,12 +97,38 @@ def fit_prior(pairs):
     return {"same": float(coef[0]), "other": float(coef[1])}
 
 
+ROLE_EDGES = (18.0, 28.0)  # T's minutes: bench < 18 <= rotation < 28 <= starter
+
+
+def role(minutes):
+    return int(np.searchsorted(ROLE_EDGES, minutes if minutes == minutes else 0.0, side="right"))
+
+
+def fit_role_prior(pairs):
+    """raw ~ k_fp * a[same position?][T's role]: a bench backup at K's position gains far more than
+    a starter at another position. Used for teammates with no shared history (new situations, rookies)."""
+    p = pairs[pairs.n_out > 0]
+    same = (p.k_grp == p.t_grp).to_numpy()
+    rl = p.t_min_in.map(role).to_numpy()
+    cols = [p.k_fp.to_numpy(float) * ((same == s) & (rl == r)) for s in (True, False) for r in range(3)]
+    w = np.sqrt((p.n_out * p.w_season).to_numpy(float))
+    coef, *_ = np.linalg.lstsq(np.column_stack(cols) * w[:, None], p.raw.to_numpy(float) * w, rcond=None)
+    return {(s, r): float(coef[i]) for i, (s, r) in enumerate((s, r) for s in (True, False) for r in range(3))}
+
+
+def role_bump(prior, k_fp, same, t_min):
+    return k_fp * prior[(bool(same), role(t_min))]
+
+
 def shrunk(pairs, prior, kappa):
     same = pairs.k_grp == pairs.t_grp
-    pri = pairs.k_fp * np.where(same, prior["same"], prior["other"])
+    if isinstance(next(iter(prior)), tuple):  # role prior
+        pri = [role_bump(prior, k, s, m) for k, s, m in zip(pairs.k_fp, same, pairs.t_min_in)]
+    else:
+        pri = pairs.k_fp * np.where(same, prior["same"], prior["other"])
     n = pairs.n_out * pairs.w_season
     w = n / (n + kappa)
-    return pairs.assign(prior=pri, bump=w * pairs.raw + (1 - w) * pri)
+    return pairs.assign(prior=pri, bump=w * pairs.raw + (1 - w) * np.asarray(pri))
 
 
 def validate(season=2026, windows=("2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01"), kappas=(2, 4, 8, 16, 32)):
@@ -149,7 +175,62 @@ def validate(season=2026, windows=("2026-01-01", "2026-02-01", "2026-03-01", "20
     return rmse, len(res["none"]), prior, examples
 
 
-if __name__ == "__main__":
+def validate_new_situations(season=2026, windows=("2025-11-15", "2025-12-15", "2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15"),
+                            kappa=16, scale=0.5, together_min=10):
+    """Out of sample, like validate(), but judged on the games the current model can't see: a key teammate
+    sits and the pair has fewer than `together_min` games together on that team (trades, signings,
+    rookies, returning players). Key = 24+ min or 30+ FP this season on any team (no 10-games-here rule)."""
+    pg = player_games([season])
+    played = {(r.aid, r.event) for r in pg.itertuples()}
+    res = {k: {"all": [], "new": []} for k in ("none", "current", "role")}
+    for start, end in zip(windows[:-1], windows[1:]):
+        hist = pg[pg.date < start]
+        pairs = fit_pairs(pg, before=start)
+        if pairs.empty:
+            continue
+        flat, rp = fit_prior(pairs), fit_role_prior(pairs)
+        cur = shrunk(pairs, flat, kappa).set_index(["team", "k", "t"])
+        rol = shrunk(pairs, rp, kappa).set_index(["team", "k", "t"])
+        agg = hist.groupby("aid").agg(fp=("fp", "mean"), mins=("min", "mean"), n=("fp", "size"), grp=("grp", "first"))
+        last_team = hist.sort_values("date").groupby("aid").team.last()
+        keys = agg[(agg.n >= 5) & ((agg.mins >= KEY_MIN) | (agg.fp >= KEY_FP))]
+        key_team = {k: last_team[k] for k in keys.index}
+        span = spans(pg)  # roster membership over the whole season
+        test = pg[(pg.date >= start) & (pg.date < end)]
+        for r in test.itertuples():
+            if r.aid not in agg.index or agg.n[r.aid] < 3:
+                continue
+            outs = [k for k, tm in key_team.items() if tm == r.team and k != r.aid and (k, r.event) not in played
+                    and (season, k, r.team) in span and span[(season, k, r.team)][0] <= r.date <= span[(season, k, r.team)][1]]
+            if not outs:
+                continue
+            m, t_min, grp = agg.fp[r.aid], agg.mins[r.aid], agg.grp[r.aid]
+            b_cur = b_role = 0.0
+            new = False
+            for k in outs:
+                key = (r.team, k, r.aid)
+                tog = (cur.n_in[key] + cur.n_out[key]) if key in cur.index else 0
+                new |= tog < together_min
+                if key in cur.index:
+                    b_cur += max(0.0, cur.bump[key])
+                    b_role += max(0.0, rol.bump[key])
+                else:
+                    b_role += max(0.0, role_bump(rp, keys.fp[k], keys.grp[k] == grp, t_min))
+            for name, pred in (("none", m), ("current", m + scale * b_cur), ("role", m + scale * b_role)):
+                res[name]["all"].append((r.fp - pred) ** 2)
+                if new:
+                    res[name]["new"].append((r.fp - pred) ** 2)
+    out = {k: {s: (float(np.sqrt(np.mean(v))), len(v)) for s, v in d.items() if v} for k, d in res.items()}
+    return out, fit_role_prior(fit_pairs(pg))
+
+
+if __name__ == "__main__" and "--new" in sys.argv:
+    out, rp = validate_new_situations()
+    for k, d in out.items():
+        print(f"   {k:8} " + "   ".join(f"{s}: RMSE {v[0]:6.2f} (n={v[1]:,})" for s, v in d.items()))
+    print("role prior (FP gained per 1 FP/game of the missing teammate):",
+          {f"{'same' if s else 'other'}-{['bench', 'rotation', 'starter'][r]}": round(v, 3) for (s, r), v in rp.items()})
+elif __name__ == "__main__":
     rmse, n, prior, ex = validate()
     print(f"out-of-sample (2025-26, refit monthly), {n:,} player-games where a key teammate sat:")
     for k, v in sorted(rmse.items(), key=lambda x: x[1]):

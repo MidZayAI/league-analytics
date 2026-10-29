@@ -227,12 +227,6 @@ def main():
         live.main()
         write_odds_history()  # include the point the live run just recorded
 
-    try:  # weekly podcast pack + published episodes; never fails the data refresh
-        import podcast
-        podcast.main()
-    except Exception as e:
-        print(f"podcast step skipped: {e}")
-
 
 if __name__ == "__main__":
     main()

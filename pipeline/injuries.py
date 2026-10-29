@@ -26,6 +26,7 @@ PREV_SEASON_WEIGHT = 0.5
 CURVE_H = 20
 BANDS = [(1, 1), (2, 2), (3, 5), (6, 10), (11, 10 ** 6)]
 DEFAULT_SIT = 0.15
+FP_PRIOR_GAMES = 8  # this season's games needed before a player's own average outweighs ESPN's projection
 
 
 @lru_cache(maxsize=8)
@@ -87,7 +88,9 @@ class InjuryState:
     """Everything injury-related for one season, using only games before `as_of` (YYYY-MM-DD).
     bumps_from reuses another state's (expensive) teammate bumps, e.g. a monthly refit."""
 
-    def __init__(self, season, as_of, with_bumps=True, bumps_from=None):
+    def __init__(self, season, as_of, with_bumps=True, bumps_from=None, pool=None):
+        """pool (live only, pool.fetch_pool): current NBA teams for everyone, ESPN projections as the
+        FP/minutes baseline for rookies, new arrivals and players who missed last season."""
         pg = _pg((season - 1, season))
         self.season, self.as_of = season, as_of
         hist = pg[pg.date < as_of]
@@ -122,12 +125,17 @@ class InjuryState:
         self.pos = both.groupby("aid").grp.first().to_dict()
         for a, n in both.groupby("aid").name.first().items():
             self.name.setdefault(a, n)
+        cur_g = cur.groupby("aid").agg(n=("fp", "size"), fp=("fp", "mean"), mins=("min", "mean"))
+        self.mins = {int(a): float(r.mins) for a, r in cur_g.iterrows() if r.n >= 3}
+        if pool:
+            self._apply_pool(pool, cur_g)
         if bumps_from is not None:
             self.bumps, self.evidence = bumps_from.bumps, bumps_from.evidence
         elif with_bumps:
             pairs = u.fit_pairs(hist, before=as_of, season_weights={season: 1.0, season - 1: PREV_SEASON_WEIGHT})
             if len(pairs):
-                prior = u.fit_prior(pairs)
+                # role prior: tested best out of sample, both overall and for pairs with no shared history
+                prior = u.fit_role_prior(pairs)
                 sh = u.shrunk(pairs, prior, KAPPA)
                 sh = sh.assign(wt=(sh.n_out * sh.w_season).clip(lower=0.5))
                 comb = sh.groupby(["k", "t"]).apply(lambda g: np.average(g.bump, weights=g.wt), include_groups=False)
@@ -135,12 +143,53 @@ class InjuryState:
                 best_row = sh.loc[sh.groupby(["k", "t"]).wt.idxmax()].set_index(["k", "t"])
                 self.evidence = {}
                 for (k_aid, t_aid), b in comb.items():
-                    if b > 0 and self.team.get(k_aid) is not None and self.team.get(k_aid) == self.team.get(t_aid):
-                        self.bumps.setdefault(int(t_aid), []).append((int(k_aid), BUMP_SCALE * float(b)))
+                    if self.team.get(k_aid) is not None and self.team.get(k_aid) == self.team.get(t_aid):
                         r = best_row.loc[(k_aid, t_aid)]
                         self.evidence[(int(k_aid), int(t_aid))] = {
                             "n": int(r.n_out), "season": int(r.season), "raw": float(r.raw),
-                            "min_in": float(r.t_min_in), "min_out": None if pd.isna(r.min_out) else float(r.min_out)}
+                            "min_in": float(r.t_min_in), "min_out": None if pd.isna(r.min_out) else float(r.min_out),
+                            "bump": BUMP_SCALE * float(b)}
+                if pool:
+                    self._role_pairs(prior)
+                for (k_aid, t_aid), ev in self.evidence.items():
+                    if ev["bump"] > 0:
+                        self.bumps.setdefault(t_aid, []).append((k_aid, ev["bump"]))
+
+    def _apply_pool(self, pool, cur_g):
+        """Current team, FP and minutes baselines from ESPN's player pool (live)."""
+        self.pool_ids = set()
+        for aid, p in pool.items():
+            if not p.get("pro"):
+                continue
+            self.pool_ids.add(aid)
+            self.team[aid] = p["pro"]  # trades, signings and rookies count from day 1
+            self.name.setdefault(aid, p["name"])
+            self.pos.setdefault(aid, u.pos_group(p.get("pos")))
+            n = int(cur_g.n[aid]) if aid in cur_g.index else 0
+            act = float(cur_g.fp[aid]) if n else 0.0
+            if p.get("proj"):
+                self.fp[aid] = (n * act + FP_PRIOR_GAMES * p["proj"]) / (n + FP_PRIOR_GAMES)
+            elif n < 5 and p.get("prev") and aid not in self.fp:
+                self.fp[aid] = p["prev"]
+            if aid not in self.mins and (p.get("proj_min") or p.get("prev_min")):
+                self.mins[aid] = p.get("proj_min") or p.get("prev_min")
+            self.sit.setdefault(aid, DEFAULT_SIT)
+            self.streak.setdefault(aid, 0)
+
+    def _role_pairs(self, prior):
+        """Teammates with no shared history (new situations, rookies): estimate from position + role."""
+        by_team = {}
+        for aid in self.pool_ids:
+            by_team.setdefault(self.team[aid], []).append(aid)
+        for mates in by_team.values():
+            keys = [k for k in mates if self.fp.get(k, 0) >= u.KEY_FP or self.mins.get(k, 0) >= u.KEY_MIN]
+            for k in keys:
+                for t in mates:
+                    if t == k or (k, t) in self.evidence or self.mins.get(t, 0) < 8:
+                        continue
+                    b = BUMP_SCALE * u.role_bump(prior, self.fp[k], self.pos.get(k) == self.pos.get(t), self.mins[t])
+                    self.evidence[(k, t)] = {"n": 0, "season": None, "raw": None, "min_in": self.mins[t],
+                                             "min_out": None, "bump": b, "role": True}
 
     def sit_base(self, aid):
         return self.sit.get(aid, DEFAULT_SIT)
