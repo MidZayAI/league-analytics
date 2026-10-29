@@ -82,6 +82,7 @@ def fetch_pool(season=CURRENT, force=False):
         own = p.get("ownership") or {}
         out[p["id"]] = {
             "name": p.get("fullName"), "pro": p.get("proTeamId"), "pos": POS.get(p.get("defaultPositionId"), ""),
+            "slots": p.get("eligibleSlots") or [],
             "proj": proj, "proj_gp": proj_gp, "proj_min": proj_min,
             "avg": cur, "n": n, "min": cur_min, "l15": l15, "n15": n15,
             "prev": prev, "prev_gp": prev_gp, "prev_min": prev_min,
@@ -106,7 +107,7 @@ def _team(abbr):
 
 
 def sleeper_games(pool, espn_abbrev, weeks_ahead=2, force=False):
-    """ESPN id -> {date: {"fp", "min"}} for upcoming games (Sleeper per-game projections in league scoring),
+    """ESPN id -> {date: {"fp", "min", "box"}} for upcoming games (Sleeper per-game projections in league scoring),
     plus a dict of Sleeper's injury status by ESPN id and the share of pool players Sleeper matched."""
     path = CACHE / f"sleeper_{CURRENT}.json"
     d = None if force else _cached(path, SLEEPER_TTL)
@@ -150,7 +151,7 @@ def sleeper_games(pool, espn_abbrev, weeks_ahead=2, force=False):
         if r["box"]:
             games.setdefault(aid, {})[r["date"]] = {
                 "fp": round(sum(w * r["box"].get(k, 0) for k, w in weights.items()), 2),
-                "min": round((r["sp"] or 0) / 60, 1)}
+                "min": round((r["sp"] or 0) / 60, 1), "box": r["box"]}
     rate = len(hit) / max(len(seen), 1)
     return games, inj, rate
 

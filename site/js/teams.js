@@ -13,7 +13,19 @@ const TEAM_METRICS = [
 ];
 
 window.Teams = {
-  teamOwner: null,
+  teamOwner: null, lineups: null,
+
+  async loadLineups() {
+    this.lineups = await fetch('data/lineups.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  },
+  // rest-of-week plan, only while that week is live and for the season being viewed
+  lineupFor(teamId) {
+    if (!this.lineups || !this.isLiveSeason || this.live?.mp !== this.lineups.mp) return null;
+    return this.lineups.teams?.[teamId] || null;
+  },
+  get teamLineup() { const me = this.T; const l = me && this.lineupFor(me.team_id); return l && l.days.length ? l : null; },
+  lineupDay(iso) { return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }); },
+  injShort(t) { return { DAY_TO_DAY: 'DTD', INJURY_RESERVE: 'IR', OUT: 'OUT', SUSPENSION: 'SUSP' }[t] || t; },
   teamMetrics: TEAM_METRICS,
 
   get teamCards() {

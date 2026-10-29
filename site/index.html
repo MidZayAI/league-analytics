@@ -720,6 +720,7 @@
             <div class="flex items-end justify-between mt-3">
               <div>
                 <div class="score !text-[26px]" x-text="fmt.rec(t)"></div>
+                <div class="stat mt-1" x-show="lineupFor(t.team_id)" x-text="lineupFor(t.team_id) ? `~${fmt.n(lineupFor(t.team_id).plan_pts, 0)} pts rest of week` : ''"></div>
                 <div class="stat mt-1"><span x-show="t.champion">🏆 Champion</span><span x-show="!t.champion && t.rank_final" x-text="`Finished ${fmt.ord(t.rank_final)}`"></span><span x-show="!t.rank_final && t.seed" x-text="`Seed ${t.seed}`"></span></div>
               </div>
               <svg x-show="t.spark" viewBox="0 0 100 28" class="w-24 h-8" preserveAspectRatio="none" aria-hidden="true">
@@ -783,6 +784,82 @@
                    x-text="oddsDelta(T.team_id, k) == null ? 'vs last week: –' : `${oddsDelta(T.team_id, k) > 0.005 ? '▲' : oddsDelta(T.team_id, k) < -0.005 ? '▼' : ''} ${fmt.signed(oddsDelta(T.team_id, k) * 100, 0)} pts vs last week`"></div>
             </div>
           </template>
+        </div>
+        </template>
+
+        <template x-if="teamLineup">
+        <div class="card" x-data="{ di: 0 }">
+          <div class="flex flex-wrap items-start justify-between gap-2 mb-1">
+            <div>
+              <h3 class="flex items-center gap-2" x-text="`Best lineup · rest of week ${lineups.mp}`"></h3>
+              <div class="sub" x-text="`${teamLineup.starts} of ${teamLineup.rem_cap} cap games left · ~${fmt.n(teamLineup.plan_pts, 0)} projected pts` + (teamLineup.plan_pts - teamLineup.naive_pts >= 1 ? ` · +${fmt.n(teamLineup.plan_pts - teamLineup.naive_pts, 0)} vs starting your best every day` : '')"></div>
+            </div>
+            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How the lineup plan works">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.lineup"></span></span>
+          </div>
+          <template x-if="teamLineup.pickup">
+            <a href="#/waivers" class="flex items-center gap-3 rounded-xl p-3 my-3" style="background: var(--wash)">
+              <img class="hs w-10 h-10" :src="headshot(teamLineup.pickup.add.id)" alt="" @error="$el.src = silhouette">
+              <div class="min-w-0 flex-1 text-[13px]">
+                <div class="font-semibold truncate" x-text="`Add ${teamLineup.pickup.add.name} (${teamLineup.pickup.add.team})${teamLineup.pickup.add.status === 'WAIVERS' ? ' · waiver claim' : ''}`"></div>
+                <div class="text-muted truncate" x-text="`drop ${teamLineup.pickup.drop.name}`"></div>
+              </div>
+              <div class="text-right shrink-0"><div class="font-extrabold up" x-text="`+${fmt.n(teamLineup.pickup.gain, 0)}`"></div><div class="text-[10px] text-muted">pts this week</div></div>
+            </a>
+          </template>
+          <!-- desktop: player x day grid -->
+          <div class="hidden sm:block overflow-x-auto mt-2">
+            <table class="w-full text-[12.5px]">
+              <thead><tr class="label">
+                <th class="text-left font-semibold py-1.5">Player</th>
+                <template x-for="d in teamLineup.days" :key="d.sp"><th class="font-semibold text-center px-1" x-text="lineupDay(d.date)"></th></template>
+                <th class="text-right font-semibold">Proj</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="p in teamLineup.players" :key="p.id">
+                  <tr class="border-t" style="border-color: var(--grid)">
+                    <td class="py-1.5 pr-2"><div class="flex items-center gap-2 min-w-0">
+                      <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                      <span class="truncate font-medium" x-text="p.name"></span>
+                      <span class="text-[10px] text-muted shrink-0" x-text="p.pro"></span>
+                      <span class="text-[10px] font-bold down shrink-0" x-show="p.inj && p.inj !== 'ACTIVE'" x-text="injShort(p.inj)"></span>
+                    </div></td>
+                    <template x-for="d in teamLineup.days" :key="d.sp">
+                      <td class="text-center px-1">
+                        <template x-if="p.days[d.sp]">
+                          <span class="inline-block min-w-[46px] rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
+                                :style="p.days[d.sp].start ? 'background: var(--s1); color: #fff' : 'border: 1px solid var(--grid); color: var(--muted)'"
+                                :title="`${fmt.n(p.days[d.sp].fp, 1)} pts if he plays · ${fmt.pct(p.days[d.sp].p, 0)} to play`"
+                                x-text="p.days[d.sp].start ? p.days[d.sp].slot : 'bench'"></span>
+                        </template>
+                        <span x-show="!p.days[d.sp]" class="text-muted">–</span>
+                      </td>
+                    </template>
+                    <td class="text-right font-bold" x-text="p.proj ? fmt.n(p.proj, 0) : '–'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <!-- phone: one day at a time -->
+          <div class="sm:hidden mt-2">
+            <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+              <template x-for="(d, i) in teamLineup.days" :key="d.sp">
+                <button class="week-chip" :class="di === i && 'active'" @click="di = i" x-text="lineupDay(d.date)"></button>
+              </template>
+            </div>
+            <template x-for="p in teamLineup.players.filter((x) => x.days[teamLineup.days[di]?.sp])" :key="p.id">
+              <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                <span class="w-11 text-center rounded-md py-0.5 text-[11px] font-semibold shrink-0"
+                      :style="p.days[teamLineup.days[di].sp].start ? 'background: var(--s1); color: #fff' : 'border: 1px solid var(--grid); color: var(--muted)'"
+                      x-text="p.days[teamLineup.days[di].sp].start ? p.days[teamLineup.days[di].sp].slot : 'bench'"></span>
+                <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <div class="min-w-0 flex-1"><div class="text-[13px] font-medium truncate" x-text="p.name"></div>
+                  <div class="text-[10.5px] text-muted" x-text="`${p.pro} · ${fmt.pct(p.days[teamLineup.days[di].sp].p, 0)} to play`"></div></div>
+                <span class="text-[13px] font-bold" x-text="fmt.n(p.days[teamLineup.days[di].sp].fp, 0)"></span>
+              </div>
+            </template>
+          </div>
+          <div class="text-[11px] text-muted mt-2">Filled = start (slot), outlined = has a game but sits. Re-planned every refresh as games finish and news breaks.</div>
         </div>
         </template>
 
@@ -1640,10 +1717,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=1897654d1a"></script>
+<script src="js/core.js?v=1da6451867"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=02bc8618fb"></script>
-<script src="js/teams.js?v=c7000016bd"></script>
+<script src="js/teams.js?v=2d70216709"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>
 <script src="js/odds.js?v=4f8928971d"></script>

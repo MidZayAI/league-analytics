@@ -1,16 +1,11 @@
 """Waiver wire: the best free agents for the games still to come, in the league's scoring.
 
-For every upcoming NBA game (not yet started) in the rest of this matchup week and in next week:
-    value = P(plays) x (0.5 x our model + 0.5 x Sleeper's projection for that game + injury boost)
-  our model   = the live predictor's blend: ESPN's season projection as the prior, pulled toward this
-                season's average and the last 15 days as games come in (projections.blend_mean)
-  Sleeper     = that specific game's projection (updated daily), re-scored with our scoring settings;
-                our model alone when Sleeper has no line for the game
-  boost       = extra points while a key teammate sits (injuries.py, same as the injury page)
-  P(plays)    = injury tag / ESPN return date / miss streak (injuries.play_p)
+Every upcoming NBA game (not yet started) in the rest of this matchup week and next week is valued
+with the shared per-game projection (gameproj.py: our model + Sleeper's game projection + DraftKings
+player props when posted, + injured-teammate boost), times the chance he plays.
 Ranked by projected points per game played (the weekly games cap makes per-game quality what matters).
 Writes site/data/waivers.json; the first run of each week also stores a snapshot in
-data/history/waivers_{season}.json so the blend can be checked against what happened.
+data/history/waivers_{season}.json so the rankings can be checked against what happened.
 """
 import json
 import math
@@ -20,14 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import pool as player_pool  # noqa: E402
-import projections as pj  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 
 CURRENT = int(os.environ.get("SEASON", 2027))
 OUT = ROOT / "site" / "data" / "waivers.json"
 SNAP = ROOT / "data" / "history" / f"waivers_{CURRENT}.json"
-MODEL_WEIGHT = 0.5
 CANDIDATES = 200   # free agents scored (by projection / season average)
 SHOWN = 60
 STASH_SHOWN = 10
@@ -36,66 +28,59 @@ AVAILABLE_SHARE = 0.6  # expected to play at least this share of his games, or h
 IR_SLOT = 13
 
 
-def _num(x):
-    return float("nan") if x is None else float(x)
-
-
-def _mu(p, repl, params):
-    prior = p.get("proj") or (p.get("prev") if (p.get("prev_gp") or 0) >= 10 else None) or repl
-    return float(pj.blend_mean(prior, _num(p.get("avg")), p.get("n") or 0, _num(p.get("l15")), p.get("n15") or 0,
-                               params["k"], params["r"]))
-
-
-def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
-    params = pj.PARAMS
+def windows(t, mp, sp_now):
     caps = t["caps"].set_index("mp")
-    weeks = {"this": [sp for sp in range(sp_now, int(caps.loc[mp].sp_end) + 1)]}
+    weeks = {"this": list(range(sp_now, int(caps.loc[mp].sp_end) + 1))}
     if mp + 1 in caps.index:
         weeks["next"] = list(range(int(caps.loc[mp + 1].sp_start), int(caps.loc[mp + 1].sp_end) + 1))
-    sleeper, sleeper_inj, match = player_pool.sleeper_games(pool, abbrev)
-    base = float(pj.play_prob(0, 0, params["p_base"], params["p_k"]))
+    return weeks
+
+
+def score(proj, aid, p, weeks, t, sp_now, starts, now, record=False):
+    """Per-week {games, plays, pts, fpg} and the overall fpg for one player."""
+    pro = p.get("pro")
+    out = {"mu": round(proj.mu(aid), 1)}
+    sl_vals, mk_vals, best_boost = [], [], (0.0, None)
+    tot_val = tot_play = 0.0
+    for wk, sps in weeks.items():
+        pts = games = plays = 0.0
+        for sp in sps:
+            if pro not in t["pro_games"].get(sp, ()) or (sp == sp_now and starts.get((pro, sp), 0) <= now):
+                continue
+            g = proj.game(aid, pro, sp, record=record)
+            if g["parts"]["sleeper"] is not None:
+                sl_vals.append(g["parts"]["sleeper"])
+            if g["parts"]["market"] is not None:
+                mk_vals.append(g["parts"]["market"])
+            if g["boost"] > best_boost[0]:
+                best_boost = (g["boost"], g["why"])
+            pts += g["p"] * g["fp"]
+            plays += g["p"]
+            games += 1
+        # with a weekly games cap, a pickup's value is points per game played, not total volume
+        out[wk] = {"games": int(games), "plays": round(plays, 1), "pts": round(pts, 1),
+                   "fpg": round(pts / plays, 1) if plays > 0.05 else None}
+        tot_val, tot_play = tot_val + pts, tot_play + plays
+    out["fpg"] = round(tot_val / tot_play, 1) if tot_play > 0.05 else None
+    out["plays"] = round(tot_play, 1)
+    out["sleeper"] = round(sum(sl_vals) / len(sl_vals), 1) if sl_vals else None
+    out["market"] = round(sum(mk_vals) / len(mk_vals), 1) if mk_vals else None
+    out["boost"] = round(best_boost[0], 1) if best_boost[0] >= 0.5 else None
+    out["why"] = best_boost[1] if best_boost[0] >= 0.5 else None
+    return out
+
+
+def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster):
+    dates = proj.dates
+    weeks = windows(t, mp, sp_now)
+    sleeper_inj, match = proj.sleeper_inj, proj.match
     rostered = {e["playerId"]: (tm["id"], e.get("lineupSlotId")) for tm in roster["teams"] for e in tm["roster"]["entries"]}
 
-    def score(aid, p):
-        mu, pro = _mu(p, repl, params), p.get("pro")
-        out = {"mu": round(mu, 1)}
-        sl_vals, best_boost = [], (0.0, None)
-        tot_val = tot_play = 0.0
-        for wk, sps in weeks.items():
-            pts = games = plays = 0.0
-            for sp in sps:
-                if pro not in t["pro_games"].get(sp, ()) or (sp == sp_now and starts.get((pro, sp), 0) <= now):
-                    continue
-                day = dates[sp].isoformat()
-                sl = sleeper.get(aid, {}).get(day)
-                if sl:
-                    sl_vals.append(sl["fp"])
-                expert = sl["fp"] if sl else mu
-                b, why = avail.boost(aid, pro, sp)
-                if b > best_boost[0]:
-                    best_boost = (b, why)
-                play = avail.p_play(aid, base, p.get("inj"), pro, sp)
-                if sl and sl["min"] == 0:
-                    play *= 0.25  # Sleeper doesn't expect him to play
-                pts += play * (MODEL_WEIGHT * mu + (1 - MODEL_WEIGHT) * expert + b)
-                plays += play
-                games += 1
-            # with a weekly games cap, a pickup's value is points per game played, not total volume
-            out[wk] = {"games": int(games), "plays": round(plays, 1), "pts": round(pts, 1),
-                       "fpg": round(pts / plays, 1) if plays > 0.05 else None}
-            tot_val, tot_play = tot_val + pts, tot_play + plays
-        out["fpg"] = round(tot_val / tot_play, 1) if tot_play > 0.05 else None
-        out["plays"] = round(tot_play, 1)
-        out["sleeper"] = round(sum(sl_vals) / len(sl_vals), 1) if sl_vals else None
-        out["boost"] = round(best_boost[0], 1) if best_boost[0] >= 0.5 else None
-        out["why"] = best_boost[1] if best_boost[0] >= 0.5 else None
-        return out
-
     free = [(a, p) for a, p in pool.items() if p.get("on_team", 0) == 0 and a not in rostered and p.get("pro")]
-    free.sort(key=lambda x: -max(x[1].get("proj") or 0, x[1].get("avg") or 0, x[1].get("l15") or 0))
+    free.sort(key=lambda x: -max(x[1].get("sl") or 0, x[1].get("proj") or 0, x[1].get("avg") or 0, x[1].get("l15") or 0))
     rows = []
     for aid, p in free[:CANDIDATES]:
-        s = score(aid, p)
+        s = score(proj, aid, p, weeks, t, sp_now, starts, now)
         tot = sum(s.get(w, {}).get("pts", 0) for w in weeks)
         rows.append({"id": aid, "name": p["name"], "team": abbrev.get(p["pro"], "").upper(), "pos": p.get("pos"),
                      "inj": None if p.get("inj") in (None, "ACTIVE") else p["inj"], "sleeper_inj": sleeper_inj.get(aid),
@@ -117,7 +102,7 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
         p = pool.get(aid)
         if not p or slot == IR_SLOT or not p.get("pro"):
             continue
-        s = score(aid, p)
+        s = score(proj, aid, p, weeks, t, sp_now, starts, now)
         if s["plays"] < MIN_PLAYS or s["fpg"] is None:
             continue  # injured or no games: not who you'd drop for a per-game upgrade comparison
         weakest.setdefault(tid, []).append({"id": aid, "name": p["name"], "fpg": s["fpg"],
@@ -128,10 +113,13 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
     out = {"updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mp": int(mp),
            "weeks": {w: {"mp": int(mp) + (w == "next"), "start": dates[sps[0]].isoformat(), "end": dates[sps[-1]].isoformat()}
                      for w, sps in weeks.items()},
-           "sleeper_ok": bool(sleeper), "sleeper_match": round(match, 3), "model_weight": MODEL_WEIGHT,
+           "sleeper_ok": bool(proj.sleeper), "sleeper_match": round(match, 3), "weights": proj.weights,
+           "lines": sum(len(v) for v in proj.props.values()),
            "players": [r for r in rows if not r["stash"]][:SHOWN] + [r for r in rows if r["stash"]][:STASH_SHOWN],
            "weakest": weakest}
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
+    for r in out["players"]:  # log the shown free agents' pre-game numbers for grading the blend
+        score(proj, r["id"], pool[r["id"]], weeks, t, sp_now, starts, now, record=True)
     snaps = json.loads(SNAP.read_text(encoding="utf-8")) if SNAP.exists() else {}
     if str(mp) not in snaps:  # first look at the week, before its games: the honest forecast to grade later
         snaps[str(mp)] = {"ts": now, "players": [{k: r.get(k) for k in ("id", "mu", "sleeper", "espn", "fpg", "this", "next")}
@@ -142,3 +130,4 @@ def build(pool, abbrev, avail, t, mp, sp_now, starts, now, roster, repl, dates):
     print(f"waivers: {len(rows)} free agents scored, Sleeper match {match:.0%}; top: {top}")
     if any(math.isnan(r["mu"]) for r in rows):
         print("waivers: warning, NaN projections")
+    return out["players"]

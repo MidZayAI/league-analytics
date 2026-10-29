@@ -18,13 +18,14 @@ from scipy.sparse import coo_matrix
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
-def optimal_lineup(rows, slots, cap=None, value=None):
-    """rows: DataFrame of player-days (sp, player_id, pts, elig). Returns (score, games, chosen index set).
+def optimal_lineup(rows, slots, cap=None, value=None, with_slots=False):
+    """rows: DataFrame of player-days (sp, player_id, pts, elig). Returns (score, games, chosen index set),
+    or with_slots=True: (score, games, {row index: slot id}).
 
     value overrides the objective (e.g. all ones to find the max games a roster could fill).
     """
     if rows.empty:
-        return 0.0, 0, set()
+        return (0.0, 0, {}) if with_slots else (0.0, 0, set())
     obj = rows.pts.to_numpy() if value is None else np.asarray(value, dtype=float)
     var_row, var_slot = [], []
     for i, elig in enumerate(rows.elig):
@@ -34,7 +35,7 @@ def optimal_lineup(rows, slots, cap=None, value=None):
                 var_slot.append(s)
     n = len(var_row)
     if n == 0:
-        return 0.0, 0, set()
+        return (0.0, 0, {}) if with_slots else (0.0, 0, set())
     var_row = np.array(var_row)
     var_slot = np.array(var_slot)
     days = rows.sp.to_numpy()[var_row]
@@ -58,9 +59,13 @@ def optimal_lineup(rows, slots, cap=None, value=None):
     res = milp(c=-obj[var_row], constraints=LinearConstraint(A, -np.inf, np.array(ub, dtype=float)),
                integrality=np.ones(n), bounds=Bounds(0, 1))
     if res.x is None:
-        return 0.0, 0, set()
-    chosen = var_row[res.x > 0.5]
-    return float(rows.pts.to_numpy()[chosen].sum()), int(len(chosen)), set(rows.index[chosen])
+        return (0.0, 0, {}) if with_slots else (0.0, 0, set())
+    on = res.x > 0.5
+    chosen = var_row[on]
+    score = float(obj[chosen].sum()) if value is not None and with_slots else float(rows.pts.to_numpy()[chosen].sum())
+    if with_slots:
+        return score, int(len(chosen)), {rows.index[i]: int(s) for i, s in zip(chosen, var_slot[on])}
+    return score, int(len(chosen)), set(rows.index[chosen])
 
 
 def coach_season(t):

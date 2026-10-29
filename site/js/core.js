@@ -15,6 +15,8 @@ const GLOSSARY = {
   odds: '10,000 simulations of the rest of the season: every remaining game played from each roster’s projected strength, this week’s game from the live forecast, then the playoff bracket. Ties in the standings use head-to-head record, then points for. Clinched/Eliminated are exact math, not simulations.',
   injuries: 'Injuries: a player tagged OUT uses ESPN’s expected return date when there is one (otherwise how often players in the same spot have returned in past seasons). When a key teammate is likely to sit, players who historically gain from his absence get a boost — half of their measured with/without-him gain, which tested best against later games. Teammates with no history together (trades, signings, rookies) get an estimate from position and role: a same-position backup gains most.',
   waivers: 'Waiver wire: free agents ranked by projected fantasy points per game he plays (the games cap makes per-game quality what counts), in this league’s ESPN points scoring, over his games still to come this week and next. Each game = half our model — ESPN’s projection pulled toward his actual season and last 15 days — and half Sleeper’s projection for that specific game, re-scored with this league’s settings + any boost from an injured teammate. Injured players likely to miss most games are listed separately as stashes. “Compare with my team” shows the per-game gain over your weakest healthy player.',
+  lineup: 'Best lineup: every remaining game this week is worth (chance he plays × projected points), using the same per-game projection as the waiver wire and win odds. An exact solver picks which games to start: each starter fills one slot he’s eligible for (PG, SG, SF, PF, C, G, F, 3 UTIL), and total starts never exceed the games left under this week’s cap. It saves cap games for better days instead of starting everyone early. The pickup is the free agent whose add (dropping one of your weakest healthy players) raises this plan the most.',
+  projblend: 'Per-game projection: our model (Sleeper’s daily projection as the starting point, pulled toward his actual season and last 15 days), Sleeper’s projection for that game, and DraftKings player props when posted (points, rebounds, assists, steals, blocks, threes, turned into fantasy points with this league’s scoring). The weights are re-fit as games are graded.',
   stakes: 'Odds if this week’s game is won vs. lost, from the same 10,000 season simulations (the live matchup forecast decides this week). The gap is how much this game matters.',
   rooting: 'For every other game this week: how much your playoff odds move depending on who wins. Root for the team listed; the number is the swing in percentage points.',
   seedgrid: 'Chance of finishing at each seed. Darker = more likely. Seeds 1-2 get a first-round bye; 1-6 make the playoffs.',
@@ -70,6 +72,7 @@ window.Core = {
     this.loadOdds();
     this.loadInjuries();
     this.loadWaivers();
+    this.loadLineups();
     // keep "updated X min ago" current, and pick up new refreshes without a reload
     setInterval(() => { this.nowTick = Date.now(); }, 30 * 1000);
     setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);
@@ -93,6 +96,7 @@ window.Core = {
       this.loadOdds();
       this.loadInjuries();
       this.loadWaivers();
+      this.loadLineups();
     } catch (e) { /* offline or mid-deploy: try again next tick */ }
   },
   ago(iso) {

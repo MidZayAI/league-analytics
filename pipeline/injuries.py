@@ -167,8 +167,9 @@ class InjuryState:
             self.pos.setdefault(aid, u.pos_group(p.get("pos")))
             n = int(cur_g.n[aid]) if aid in cur_g.index else 0
             act = float(cur_g.fp[aid]) if n else 0.0
-            if p.get("proj"):
-                self.fp[aid] = (n * act + FP_PRIOR_GAMES * p["proj"]) / (n + FP_PRIOR_GAMES)
+            prior = p.get("sl") or p.get("proj")  # Sleeper's daily projection; ESPN's only as a fallback
+            if prior:
+                self.fp[aid] = (n * act + FP_PRIOR_GAMES * prior) / (n + FP_PRIOR_GAMES)
             elif n < 5 and p.get("prev") and aid not in self.fp:
                 self.fp[aid] = p["prev"]
             if aid not in self.mins and (p.get("proj_min") or p.get("prev_min")):

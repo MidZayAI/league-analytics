@@ -14,6 +14,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expected  # noqa: E402
+import gameproj  # noqa: E402
+import lineups  # noqa: E402
 import injuries  # noqa: E402
 import nba_logs  # noqa: E402
 import pool as player_pool  # noqa: E402
@@ -92,7 +94,7 @@ class InjuryAvailability:
         nba_logs.fetch_season(CURRENT)
         self.dates, self.curve = dates, pj.PARAMS.get("return_curve")
         today = dates[sp_now].isoformat()
-        cache = ROOT / "data" / "tidy" / f"injstate_v3_{CURRENT}_{today}.pkl"  # bump v when InjuryState changes
+        cache = ROOT / "data" / "tidy" / f"injstate_v4_{CURRENT}_{today}.pkl"  # bump v when InjuryState changes
         if cache.exists():
             self.state = pd.read_pickle(cache)
         else:
@@ -285,7 +287,22 @@ def main():
     except Exception as e:  # the pool only sharpens baselines; never block the live forecast on it
         print(f"pool unavailable: {e}")
         pool = None
+    sleeper = None
+    if pool:
+        sleeper = player_pool.sleeper_games(pool, abbrev)
+        for aid, games in sleeper[0].items():  # Sleeper's average upcoming projection = the starting estimate
+            fps = [g["fp"] for g in games.values() if g.get("min")]
+            if fps and aid in pool:
+                pool[aid]["sl"] = float(np.mean(fps))
     avail = InjuryAvailability(roster, dates, sp_now, starts, t["pro_games"], now, pool)
+    proj = None
+    if pool:
+        weeks_ahead = [sp for sp in range(sp_now, int(caps.loc[mp].sp_end) + 1)]
+        if mp + 1 in caps.index:
+            weeks_ahead += list(range(int(caps.loc[mp + 1].sp_start), int(caps.loc[mp + 1].sp_end) + 1))
+        gameproj.grade(dates[sp_now].isoformat())
+        proj = gameproj.GameProjector(pool, abbrev, avail, dates, [sp for sp in weeks_ahead if sp in t["pro_games"]],
+                                      model.repl, sleeper)
     daily = t["daily"]
     names = dict(zip(t["teams"].team_id, t["teams"].name))
     rng = np.random.default_rng()
@@ -304,6 +321,8 @@ def main():
             prev_avg, prev_gp = per_game(split(st, CURRENT - 1, 0, 0))
             prior = proj_pg if proj_gp else (prev_avg if prev_gp >= 10 else model.repl)
             mu = float(pj.blend_mean(prior, season_avg, n, recent_avg, n15, P["k"], P["r"]))
+            if proj and pid in pool:
+                mu = proj.mu(pid)  # Sleeper-based starting estimate instead of ESPN's preseason one
             sd = float(pj.spread(mu, model.cv))
             hist = raw_state.loc[pid] if pid in raw_state.index else None
             base = float(pj.play_prob(hist.played if hist is not None else 0,
@@ -336,10 +355,15 @@ def main():
                     days.append({"sp": sp, "state": "played" if gp else ("missed" if has_game else "none"),
                                  "pts": pts if gp else None, "counted": bool(counted and gp)})
                 elif has_game:
-                    p = avail.p_play(pid, base, inj, pro, sp)
-                    b, why = avail.boost(pid, pro, sp)
-                    rows.append({"sp": sp, "mu": mu + b, "sd": sd, "p": p, "player_id": pid})
-                    day = {"sp": sp, "state": "game", "p": p}
+                    if proj and pid in pool:  # this game's blend: our model + Sleeper + betting lines + boost
+                        g = proj.game(pid, pro, sp, base, inj, record=True)
+                        p, b, why, g_mu = g["p"], g["boost"], g["why"], g["fp"]
+                    else:
+                        p = avail.p_play(pid, base, inj, pro, sp)
+                        b, why = avail.boost(pid, pro, sp)
+                        g_mu = mu + b
+                    rows.append({"sp": sp, "mu": g_mu, "sd": float(pj.spread(g_mu, model.cv)), "p": p, "player_id": pid})
+                    day = {"sp": sp, "state": "game", "p": p, "fp": round(g_mu, 1)}
                     if b >= 0.5:
                         day.update(boost=round(b, 1), why=why)
                     days.append(day)
@@ -422,11 +446,18 @@ def main():
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
     write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail)
     write_injuries(avail, roster, abbrev, sp_now)
-    if pool:
+    if proj:
+        fa = []
         try:
-            waivers.build(pool, abbrev, avail, t, int(mp), sp_now, starts, now, roster, model.repl, dates)
+            fa = waivers.build(pool, abbrev, proj, t, int(mp), sp_now, starts, now, roster)
         except Exception as e:  # never fail the live forecast over the waiver list
             print(f"waivers skipped: {e}")
+        try:
+            rem_caps = {s["team_id"]: s["rem_cap"] for m in matchups for s in (m["home"], m["away"])}
+            lineups.build(proj, t, int(mp), sp_now, starts, now, roster, rem_caps, pool, abbrev, fa, week, team_out)
+        except Exception as e:
+            print(f"lineups skipped: {e}")
+        proj.save_log()
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 
