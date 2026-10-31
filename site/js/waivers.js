@@ -2,7 +2,7 @@
    quality what matters), for the games left this week and next week, in league scoring. */
 
 window.Waivers = {
-  waivers: null, wvSort: 'fpg', wvPos: 'All', wvTeam: '', wvOpen: null,
+  waivers: null, wvSort: 'fpg', wvPos: 'All', wvTeam: '', wvOpen: null, wvMode: 'week',
 
   async loadWaivers() {
     this.waivers = await fetch('data/waivers.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -15,6 +15,17 @@ window.Waivers = {
       .slice().sort((a, b) => (this.wvFpg(b) ?? -1) - (this.wvFpg(a) ?? -1));
   },
   get wvRows() { return this.wvSorted(false); },
+  // long-term view: rest-of-season FP/g (with upside), short-term boosts stripped out
+  get wvLong() {
+    return (this.waivers?.longterm || []).filter((r) => r.lt && (this.wvPos === 'All' || r.pos === this.wvPos))
+      .slice().sort((a, b) => b.lt.ros - a.lt.ros);
+  },
+  wvLongUpgrade(r) {
+    const w = this.wvTeam ? (this.waivers?.weakest_lt?.[this.wvTeam] || [])[0] : null;
+    return w ? { gain: r.lt.ros - w.ros, name: w.name, ros: w.ros } : null;
+  },
+  // range bar: rest-of-season to upside on a shared 10..50 FP/g scale
+  wvBar(v) { return `${Math.max(0, Math.min(100, ((v - 10) / 40) * 100))}%`; },
   get wvStash() { return this.wvSorted(true); },
   get wvTeams() {
     const s = this.meta?.current_season;

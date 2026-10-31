@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import longterm  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 
 CURRENT = int(os.environ.get("SEASON", 2027))
@@ -23,6 +24,7 @@ SNAP = ROOT / "data" / "history" / f"waivers_{CURRENT}.json"
 CANDIDATES = 200   # free agents scored (by projection / season average)
 SHOWN = 60
 STASH_SHOWN = 10
+LONG_SHOWN = 60
 MIN_PLAYS = 1.0   # expected games played in the window to be ranked normally
 AVAILABLE_SHARE = 0.6  # expected to play at least this share of his games, or he's listed as a stash
 IR_SLOT = 13
@@ -78,17 +80,25 @@ def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster):
 
     free = [(a, p) for a, p in pool.items() if p.get("on_team", 0) == 0 and a not in rostered and p.get("pro")]
     free.sort(key=lambda x: -max(x[1].get("sl") or 0, x[1].get("proj") or 0, x[1].get("avg") or 0, x[1].get("l15") or 0))
-    rows = []
-    for aid, p in free[:CANDIDATES]:
+    # long-term: rest-of-season FP/g + upside (longterm.py), for everyone who has played this season
+    try:
+        lt = longterm.live(dates[sp_now].isoformat(), proj.avail.feed, proj.avail.state.evidence)
+    except Exception as e:  # never lose the weekly list over the long-term view
+        print(f"longterm skipped: {e}")
+        lt = {}
+
+    def row(aid, p):
         s = score(proj, aid, p, weeks, t, sp_now, starts, now)
         tot = sum(s.get(w, {}).get("pts", 0) for w in weeks)
-        rows.append({"id": aid, "name": p["name"], "team": abbrev.get(p["pro"], "").upper(), "pos": p.get("pos"),
-                     "inj": None if p.get("inj") in (None, "ACTIVE") else p["inj"], "sleeper_inj": sleeper_inj.get(aid),
-                     "status": p.get("status"), "owned": p.get("owned"), "owned_chg": p.get("owned_chg"),
-                     "espn": round(p["proj"], 1) if p.get("proj") else None,
-                     "avg": round(p["avg"], 1) if p.get("avg") else None, "n": int(p.get("n") or 0),
-                     "l15": round(p["l15"], 1) if p.get("l15") else None,
-                     "outlook": p.get("outlook"), "total": round(tot, 1), **s})
+        return {"id": aid, "name": p["name"], "team": abbrev.get(p["pro"], "").upper(), "pos": p.get("pos"),
+                "inj": None if p.get("inj") in (None, "ACTIVE") else p["inj"], "sleeper_inj": sleeper_inj.get(aid),
+                "status": p.get("status"), "owned": p.get("owned"), "owned_chg": p.get("owned_chg"),
+                "espn": round(p["proj"], 1) if p.get("proj") else None,
+                "avg": round(p["avg"], 1) if p.get("avg") else None, "n": int(p.get("n") or 0),
+                "l15": round(p["l15"], 1) if p.get("l15") else None,
+                "outlook": p.get("outlook"), "total": round(tot, 1), "lt": lt.get(aid), **s}
+
+    rows = [row(aid, p) for aid, p in free[:CANDIDATES]]
     # rank by projected points per game played; injured stash candidates (likely to miss many of their
     # games in the window) come after everyone who should actually be playing
     for r in rows:
@@ -110,13 +120,24 @@ def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster):
     for tid in weakest:
         weakest[tid] = sorted(weakest[tid], key=lambda r: r["fpg"])[:3]
 
+    # long-term list: best rest-of-season FP/g among all free agents who have played this season
+    have = {r["id"]: r for r in rows}
+    lt_free = sorted((a for a, _ in free if a in lt), key=lambda a: -lt[a]["ros"])[:LONG_SHOWN]
+    longlist = [have.get(a) or row(a, pool[a]) for a in lt_free]
+    for r in longlist:
+        r.setdefault("stash", r["plays"] < MIN_PLAYS)
+        r["short_term"] = round(r["fpg"] - r["lt"]["ros"], 1) if r.get("fpg") is not None else None
+
     out = {"updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mp": int(mp),
            "weeks": {w: {"mp": int(mp) + (w == "next"), "start": dates[sps[0]].isoformat(), "end": dates[sps[-1]].isoformat()}
                      for w, sps in weeks.items()},
            "sleeper_ok": bool(proj.sleeper), "sleeper_match": round(match, 3), "weights": proj.weights,
            "lines": sum(len(v) for v in proj.props.values()),
            "players": [r for r in rows if not r["stash"]][:SHOWN] + [r for r in rows if r["stash"]][:STASH_SHOWN],
-           "weakest": weakest}
+           "weakest": weakest, "longterm": longlist,
+           "weakest_lt": {tid: sorted(({"id": a, "name": pool[a]["name"], "ros": lt[a]["ros"]} for a, (t2, sl) in rostered.items()
+                                        if t2 == tid and sl != IR_SLOT and a in lt and a in pool), key=lambda r: r["ros"])[:3]
+                          for tid in {t2 for t2, _ in rostered.values()}}}
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
     for r in out["players"]:  # log the shown free agents' pre-game numbers for grading the blend
         score(proj, r["id"], pool[r["id"]], weeks, t, sp_now, starts, now, record=True)
