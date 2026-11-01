@@ -206,3 +206,32 @@ def clinch_flags(teams, wins_now, games_left, n_playoff):
                   "clinched_bye": n_playoff >= 6 and can_catch <= 1,
                   "eliminated": ahead_for_sure >= n_playoff}
     return out
+
+
+class Context:
+    """Everything a season simulation needs apart from rosters, so the same season can be re-run with
+    changed rosters (trades) or shifted team strength (sensitivity). Runs with the same seed share
+    their random numbers, so differences between them come from the change, not from noise."""
+
+    def __init__(self, teams, done, future, later, rounds, caps, games, sp_now, n_playoff, params, sims,
+                 avail, current=None):
+        self.teams, self.done, self.future, self.later, self.rounds = teams, done, future, later, rounds
+        self.caps, self.games, self.sp_now, self.n_playoff = caps, games, sp_now, n_playoff
+        self.params, self.sims, self.avail, self.current = params, sims, avail, current
+
+    def expected(self, players, seed=7):
+        """{(team, mp): expected score} for the given teams' player lists."""
+        return expected_scores(players, self.later, self.caps, self.games, self.sp_now,
+                               np.random.default_rng(seed), self.avail)
+
+    def run(self, exp, seed=11, sims=None):
+        rng = np.random.default_rng(seed)
+        out = simulate(self.teams, self.done, self.future, exp, self.rounds, self.n_playoff, self.params,
+                       sims or self.sims, rng, current=self.current)
+        return {r["team_id"]: r for r in summarize(self.teams, out, self.n_playoff, None)}
+
+    def weekly(self, exp, tid):
+        """Average expected score per regular-season week still to come (after the current one)."""
+        reg = [mp for mp in self.later if mp not in self.rounds]
+        v = [exp[(tid, mp)] for mp in reg if (tid, mp) in exp]
+        return float(np.mean(v)) if v else 0.0

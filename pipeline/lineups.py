@@ -122,8 +122,10 @@ def build(proj, t, mp, sp_now, starts, now, roster, rem_caps, pool, abbrev, waiv
 
         # best add/drop: drop one of the weakest healthy players (by their best-case contribution)
         value = {pl["id"]: sum(p * fp for p, fp in pl["games"].values()) for pl in players}
+        # drop candidates: the weakest players by per-game value (not by games left this week, which would
+        # flag a star whose team is simply done for the week)
         drops = sorted([pl for pl in players if (pl["inj"] or "ACTIVE") in ("ACTIVE", "NORMAL", None)],
-                       key=lambda pl: value[pl["id"]])[:DROP_CANDIDATES]
+                       key=lambda pl: proj.mu(pl["id"]) if pl["id"] in proj.pool else value[pl["id"]])[:DROP_CANDIDATES]
         best = None
         for add in adds:
             if not add["games"]:

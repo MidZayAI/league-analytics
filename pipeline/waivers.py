@@ -72,7 +72,7 @@ def score(proj, aid, p, weeks, t, sp_now, starts, now, record=False):
     return out
 
 
-def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster):
+def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster, lt=None):
     dates = proj.dates
     weeks = windows(t, mp, sp_now)
     sleeper_inj, match = proj.sleeper_inj, proj.match
@@ -81,11 +81,12 @@ def build(pool, abbrev, proj, t, mp, sp_now, starts, now, roster):
     free = [(a, p) for a, p in pool.items() if p.get("on_team", 0) == 0 and a not in rostered and p.get("pro")]
     free.sort(key=lambda x: -max(x[1].get("sl") or 0, x[1].get("proj") or 0, x[1].get("avg") or 0, x[1].get("l15") or 0))
     # long-term: rest-of-season FP/g + upside (longterm.py), for everyone who has played this season
-    try:
-        lt = longterm.live(dates[sp_now].isoformat(), proj.avail.feed, proj.avail.state.evidence)
-    except Exception as e:  # never lose the weekly list over the long-term view
-        print(f"longterm skipped: {e}")
-        lt = {}
+    if lt is None:
+        try:
+            lt = longterm.live(dates[sp_now].isoformat(), proj.avail.feed, proj.avail.state.evidence)
+        except Exception as e:  # never lose the weekly list over the long-term view
+            print(f"longterm skipped: {e}")
+            lt = {}
 
     def row(aid, p):
         s = score(proj, aid, p, weeks, t, sp_now, starts, now)

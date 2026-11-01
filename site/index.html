@@ -766,8 +766,110 @@
       <div class="card text-sm text-ink2" x-show="!h2hLive && !h2hPast">That matchup isn't available.</div>
     </section>
 
+    <!-- ============ TRADE ANALYZER ============ -->
+    <section x-show="page === 'trades'" class="space-y-4">
+      <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+        <a href="#/teams" class="week-chip">Teams</a>
+        <a href="#/trades" class="week-chip active">Trade analyzer</a>
+      </div>
+      <div>
+        <div class="label" x-text="tradesData ? 'Updated ' + ago(tradesData.updated_at) : ''"></div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Trade analyzer
+          <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How trades are analyzed">i</button><span class="pop" x-show="o" x-text="glossary.trades"></span></span></h1>
+      </div>
+      <div class="card text-sm text-ink2" x-show="!rosters">The trade analyzer appears while the season is in progress.</div>
+
+      <template x-for="tr in tradesData?.trades || []" :key="tr.id">
+        <div class="card">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 x-text="tr.teams.map((s) => s.name).join(' ⇄ ')"></h3>
+              <div class="sub" x-text="`${fmt.date(tr.date)} · ${tr.status}${tr.status === 'In review' ? ' (not yet processed)' : ''}`"></div>
+            </div>
+            <button class="week-chip" @click="trLoad(tr)">Open in builder</button>
+          </div>
+          <div class="grid md:grid-cols-2 gap-3">
+            <template x-for="s in tr.teams" :key="s.team_id">
+              <div class="rounded-xl p-3" style="background: var(--wash)">
+                <div class="flex items-center gap-2 mb-2">
+                  <img class="logo w-6 h-6" :src="logoOf(s.team_id)" alt="" @error="$el.src = silhouette">
+                  <span class="font-bold truncate" x-text="s.name"></span>
+                </div>
+                <template x-for="(grp, gi) in [['Gets', s.in], ['Gives', s.out]]" :key="gi">
+                  <div class="mb-2">
+                    <div class="label mb-1" x-text="grp[0]"></div>
+                    <template x-for="p in grp[1]" :key="p.id">
+                      <div class="flex items-center gap-2 py-0.5 text-[13px]">
+                        <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" @error="$el.src = silhouette">
+                        <span class="truncate flex-1" x-text="`${p.name} (${p.pro})`"></span>
+                        <span class="font-semibold" x-text="`${fmt.n(p.ros, 1)}/g`"></span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <div class="grid grid-cols-3 gap-2 text-center mt-2">
+                  <div><div class="label">Pts / week</div><div class="font-extrabold" :class="s.weekly > 0 ? 'up' : 'down'" x-text="fmt.signed(s.weekly, 0)"></div></div>
+                  <div><div class="label">Playoffs</div><div class="font-extrabold" :class="s.odds.playoff > 0 ? 'up' : 'down'" x-text="pctPts(s.odds.playoff)"></div><div class="text-[10px] text-muted" x-text="`→ ${fmt.pct(s.odds_after.playoff, 0)}`"></div></div>
+                  <div><div class="label">Title</div><div class="font-extrabold" :class="s.odds.title > 0 ? 'up' : 'down'" x-text="pctPts(s.odds.title)"></div><div class="text-[10px] text-muted" x-text="`→ ${fmt.pct(s.odds_after.title, 0)}`"></div></div>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div class="text-[13px] mt-3 font-semibold" x-text="tr.even ? 'Close to even.' : tr.verdict"></div>
+          <div class="text-[11px] text-muted mt-1">Exact: the rest of the season simulated with rosters before vs after the trade, same random numbers. Odds changes are percentage points.</div>
+        </div>
+      </template>
+
+      <div class="card" id="trade-builder" x-show="rosters">
+        <h3 class="mb-0.5">Build a trade</h3>
+        <div class="sub mb-3">Pick two teams and tick the players each side gives up. Instant estimate from rest-of-season projections and the weekly cap.</div>
+        <div class="grid md:grid-cols-2 gap-3">
+          <template x-for="side in ['A', 'B']" :key="side">
+            <div>
+              <select class="week-chip w-full mb-2" @change="if (side === 'A') { trA = $event.target.value; trPickA = []; } else { trB = $event.target.value; trPickB = []; }"
+                      :aria-label="`Team ${side}`">
+                <option value="">Choose a team…</option>
+                <template x-for="t in trTeams()" :key="t.id"><option :value="t.id" x-text="t.name" :selected="(side === 'A' ? trA : trB) === t.id"></option></template>
+              </select>
+              <template x-for="p in ((side === 'A' ? trA : trB) && rosters.teams[side === 'A' ? trA : trB]?.players) || []" :key="p.id">
+                <label class="flex items-center gap-2 py-1 border-t text-[13px] cursor-pointer" style="border-color: var(--grid)">
+                  <input type="checkbox" :checked="(side === 'A' ? trPickA : trPickB).includes(p.id)" @change="trToggle(side, p.id)">
+                  <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <span class="truncate flex-1" x-text="p.name"></span>
+                  <span class="text-[10px] font-bold down" x-show="p.inj" x-text="injShort(p.inj)"></span>
+                  <span class="font-semibold w-12 text-right" x-text="fmt.n(p.ros, 1)"></span>
+                </label>
+              </template>
+            </div>
+          </template>
+        </div>
+        <template x-if="trResult">
+          <div class="mt-4 grid md:grid-cols-2 gap-3">
+            <template x-for="s in trResult.sides" :key="s.tid">
+              <div class="rounded-xl p-3" style="background: var(--wash)">
+                <div class="font-bold mb-1" x-text="s.name"></div>
+                <div class="text-[12px] text-ink2" x-text="`Gets ${s.ins.map((p) => p.name).join(', ') || 'nothing'} · gives ${s.outs.map((p) => p.name).join(', ') || 'nothing'}`"></div>
+                <div class="grid grid-cols-3 gap-2 text-center mt-2">
+                  <div><div class="label">Pts / week</div><div class="font-extrabold" :class="s.weekly > 0 ? 'up' : 'down'" x-text="fmt.signed(s.weekly, 0)"></div></div>
+                  <div><div class="label">Playoffs*</div><div class="font-extrabold" :class="s.playoff > 0 ? 'up' : 'down'" x-text="pctPts(s.playoff)"></div></div>
+                  <div><div class="label">Title*</div><div class="font-extrabold" :class="s.title > 0 ? 'up' : 'down'" x-text="pctPts(s.title)"></div></div>
+                </div>
+                <div class="text-[11px] text-muted mt-2" x-text="`Rest-of-season FP/g in vs out: ${fmt.signed(s.ros, 1)} (raw, before the cap)`"></div>
+              </div>
+            </template>
+            <div class="md:col-span-2 text-[13px] font-semibold" x-text="Math.abs(trResult.sides[0].title - trResult.sides[1].title) < 0.01 && Math.abs(trResult.sides[0].weekly) < 8 ? 'Close to even.' : `${trResult.best.name} comes out ahead.`"></div>
+            <div class="md:col-span-2 text-[11px] text-muted">* Estimates from each team’s odds sensitivity; trades that actually happen get the exact simulation above. Roster spots and drops aren’t modelled.</div>
+          </div>
+        </template>
+      </div>
+    </section>
+
     <!-- ============ TEAMS ============ -->
     <section x-show="page === 'teams'" class="space-y-4">
+      <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1" x-show="rosters && isLiveSeason">
+        <a href="#/teams" class="week-chip active">Teams</a>
+        <a href="#/trades" class="week-chip">Trade analyzer</a>
+      </div>
       <div>
         <div class="label" x-text="fmt.seasonLabel(season)"></div>
         <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5">Teams</h1>
@@ -925,6 +1027,45 @@
             </template>
           </div>
           <div class="text-[11px] text-muted mt-2">Filled = start (slot), outlined = has a game but sits. Re-planned every refresh as games finish and news breaks.</div>
+        </div>
+        </template>
+
+        <template x-if="teamRoster">
+        <div class="card">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div>
+              <h3 class="flex items-center gap-2">Roster projections
+                <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How projections work">i</button><span class="pop" x-show="o" x-text="rsMode === 'week' ? glossary.projblend : glossary.longterm"></span></span></h3>
+              <div class="sub" x-text="`~${fmt.n(teamRoster.weekly_sim, 0)} expected pts per remaining week (cap-aware)`"></div>
+            </div>
+            <div class="flex gap-1.5">
+              <button class="week-chip" :class="rsMode === 'week' && 'active'" @click="rsMode = 'week'">This week</button>
+              <button class="week-chip" :class="rsMode === 'ros' && 'active'" @click="rsMode = 'ros'">Rest of season</button>
+            </div>
+          </div>
+          <template x-for="p in teamRoster.players" :key="p.id">
+            <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)" x-data="{ open: false }" @click="open = !open">
+              <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[13px] font-medium truncate" x-text="p.name"></span>
+                  <span class="text-[10px] font-bold down shrink-0" x-show="p.inj" x-text="injShort(p.inj)"></span>
+                  <span class="text-[10px] text-muted shrink-0" x-show="p.slot === 13">IR</span>
+                </div>
+                <div class="text-[10.5px] text-muted truncate"
+                     x-text="rsMode === 'week' ? [p.pro, p.pos, `${games(p.week.games)} left`, p.week.games ? `~${fmt.n(p.week.plays, 1)} expected to play` : ''].filter(Boolean).join(' · ')
+                                               : [p.pro, p.pos, p.tags?.[0] || (p.min_proj ? `~${fmt.n(p.min_proj, 0)} min projected` : '')].filter(Boolean).join(' · ')"></div>
+                <div x-show="open && rsMode === 'ros' && p.tags?.length > 1" class="text-[11px] text-ink2 mt-1">
+                  <template x-for="tg in p.tags.slice(1)" :key="tg"><div x-text="'• ' + tg"></div></template>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="font-bold text-[14px]" x-text="rsMode === 'week' ? (p.week.fpg != null ? fmt.n(p.week.fpg, 1) : '–') : fmt.n(p.ros, 1)"></div>
+                <div class="text-[10px] text-muted" x-text="rsMode === 'week' ? (p.week.pts ? `${fmt.n(p.week.pts, 0)} pts left` : 'FP/g') : (p.upside ? `up ${fmt.n(p.upside, 0)}` : 'FP/g')"></div>
+              </div>
+            </div>
+          </template>
+          <div class="text-[11px] text-muted mt-2" x-text="rsMode === 'week' ? 'FP per game he plays in the games left this matchup week.' : 'Projected FP per game for the rest of the season, temporary bumps removed; upside = a realistic good case (about 1 in 4).'"></div>
         </div>
         </template>
 
@@ -1782,7 +1923,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=f532bd2445"></script>
+<script src="js/core.js?v=f29eea5f8c"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=02bc8618fb"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -1791,7 +1932,8 @@
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=bdec953441"></script>
-<script src="js/app.js?v=9d0bcf28fe"></script>
+<script src="js/trades.js?v=75e9fadf86"></script>
+<script src="js/app.js?v=c1e4db2253"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>

@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expected  # noqa: E402
 import gameproj  # noqa: E402
 import lineups  # noqa: E402
+import longterm  # noqa: E402
+import rosters  # noqa: E402
+import trades  # noqa: E402
 import injuries  # noqa: E402
 import nba_logs  # noqa: E402
 import pool as player_pool  # noqa: E402
@@ -204,8 +207,11 @@ def write_injuries(avail, roster, abbrev, sp_now):
           f"{sum(1 for p in players for h in p['helps'] if h['role'])} role-based beneficiaries")
 
 
-def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
-    """Season simulation from now: playoff / bye / title odds, stakes, rooting guide, clinch flags."""
+def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail, ros=None):
+    """Season simulation from now: playoff / bye / title odds, stakes, rooting guide, clinch flags.
+    Weeks after the current one value each player at his rest-of-season FP/g (longterm.py: tested
+    better than the per-game blend over a season) when known; next week also keeps teammate boosts.
+    Returns the season context, rosters and expected scores so trades/sensitivity can re-run it."""
     reg, rounds, n_po = season_sim.league_format(CURRENT, t)
     caps = t["caps"].set_index("mp")
     m = t["matchups"]
@@ -216,13 +222,23 @@ def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
     players = {tid: [{"pid": pid, "pro": pro, "mu": mu, "base": base, "inj": inj} for pro, mu, base, inj, pid in team_out[tid]["model_players"]]
                for tid in teams}
     later = sorted({f[0] for f in future if f[0] > mp}) + [r for r in rounds if r in caps.index]
-    exp = season_sim.expected_scores(players, later, caps, t["pro_games"], sp_now, rng,
-                                     lambda pl, sp, h: (avail.p_play(pl["pid"], pl["base"], pl["inj"], pl["pro"], sp),
-                                                        pl["mu"] + avail.boost(pl["pid"], pl["pro"], sp)[0]))
+    ros = ros or {}
+    next_end = int(caps.loc[mp + 1].sp_end) if mp + 1 in caps.index else 0
+
+    def value(pl, sp, h):
+        p = avail.p_play(pl["pid"], pl["base"], pl["inj"], pl["pro"], sp)
+        base_mu = ros.get(pl["pid"], pl["mu"])
+        if sp <= next_end:  # short-term teammate boosts only matter for the next week
+            return p, base_mu + avail.boost(pl["pid"], pl["pro"], sp)[0]
+        return p, base_mu
+
     params = {**season_sim.DEFAULTS, **{k: pj.PARAMS[k] for k in ("week_cv", "odds_drift", "odds_shrink") if k in pj.PARAMS}}
-    out = season_sim.simulate(teams, done, future, exp, [r for r in rounds if r in caps.index], n_po, params, SIMS, rng,
-                              current={"mp": mp, "draws": cur_draws} if cur_draws else None)
-    res = season_sim.summarize(teams, out, n_po, None)
+    ctx = season_sim.Context(teams, done, future, later, [r for r in rounds if r in caps.index], caps, t["pro_games"],
+                             sp_now, n_po, params, SIMS, value,
+                             current={"mp": mp, "draws": cur_draws} if cur_draws else None)
+    exp = ctx.expected(players, seed=int(rng.integers(1 << 30)))
+    by_team = ctx.run(exp, seed=int(rng.integers(1 << 30)))
+    res = [by_team[tid] for tid in teams]
 
     wins_now = {tid: 0 for tid in teams}
     losses_now = {tid: 0 for tid in teams}
@@ -245,6 +261,7 @@ def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail):
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "teams": res,
     }, default=float, separators=(",", ":")), encoding="utf-8")
     print("odds: " + ", ".join(f"{r['name']} {r['playoff']:.0%}/{r['title']:.0%}" for r in sorted(res, key=lambda r: -r["title"])))
+    return ctx, players, exp
 
 
 def histogram(values, bins=40):
@@ -444,12 +461,27 @@ def main():
         "snapshots": [s for s in snaps if s["mp"] == mp],
     }
     OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
-    write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail)
+    lt = {}
+    if proj:
+        try:
+            lt = longterm.live(dates[sp_now].isoformat(), avail.feed, avail.state.evidence)
+        except Exception as e:
+            print(f"longterm skipped: {e}")
+    ctx, players, exp = write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail,
+                                   {pid: v["ros"] for pid, v in lt.items()})
     write_injuries(avail, roster, abbrev, sp_now)
+    roster_rows, cap_avg = {}, 0.0
+    try:
+        roster_rows, cap_avg = rosters.build(ctx, players, exp, lt, proj, team_out, roster, pool or {}, abbrev, names)
+        trades.build(c, sp_now, ctx, players, exp, roster_rows, cap_avg, names)
+    except Exception as e:  # never fail the live forecast over rosters/trades
+        import traceback
+        traceback.print_exc()
+        print(f"rosters/trades skipped: {e}")
     if proj:
         fa = []
         try:
-            fa = waivers.build(pool, abbrev, proj, t, int(mp), sp_now, starts, now, roster)
+            fa = waivers.build(pool, abbrev, proj, t, int(mp), sp_now, starts, now, roster, lt)
         except Exception as e:  # never fail the live forecast over the waiver list
             print(f"waivers skipped: {e}")
         try:
