@@ -264,6 +264,43 @@ def write_odds(t, mp, sp_now, team_out, cur_draws, names, rng, avail, ros=None):
     return ctx, players, exp
 
 
+def next_week_preview(t, mp, ctx, players, exp, names):
+    """Next matchup week's games with projected scores and win chances, from the season simulation's
+    expected scores (same shrink and week-to-week spread). The site shows it from the Saturday before."""
+    from math import erf, sqrt
+    from datetime import timedelta
+    nmp = mp + 1
+    caps = t["caps"].set_index("mp")
+    if nmp not in caps.index:
+        return None
+    m = t["matchups"]
+    games = m[(m.mp == nmp) & m.opp_id.notna() & (m.team_id < m.opp_id)]
+    if games.empty:
+        return None
+    c = caps.loc[nmp]
+    lam, cv = ctx.params.get("odds_shrink", 1.0), ctx.params["week_cv"]
+    vals = [v for (tid, wk), v in exp.items() if wk == nmp]
+    mean = float(np.mean(vals)) if vals else 0.0
+    shrunk = lambda tid: mean + lam * (exp.get((tid, nmp), mean) - mean)
+    sps = range(int(c.sp_start), int(c.sp_end) + 1)
+    avail_games = {tid: sum(1 for pl in plist for sp in sps if pl["pro"] in t["pro_games"].get(sp, ())) for tid, plist in players.items()}
+    out = []
+    for r in games.itertuples():
+        a, b = int(r.team_id), int(r.opp_id)
+        ea, eb = shrunk(a), shrunk(b)
+        z = (ea - eb) / max(1e-6, sqrt((cv * ea) ** 2 + (cv * eb) ** 2))
+        pa = 0.5 * (1 + erf(z / sqrt(2)))
+        side = lambda tid, e, p: {"team_id": tid, "name": names.get(tid), "proj": round(e, 1), "win_prob": round(p, 4),
+                                   "games": avail_games.get(tid, 0)}
+        out.append({"matchup_id": int(r.matchup_id), "home": side(a, ea, pa), "away": side(b, eb, 1 - pa)})
+    start = pd.Timestamp(c.start).date() if "start" in c else None
+    if start is None:
+        dates = dict(zip(t["calendar"].sp, t["calendar"].date))
+        start = dates[int(c.sp_start)]
+    return {"mp": nmp, "cap": int(c.cap), "start": start.isoformat(), "end": (start + timedelta(days=len(sps) - 1)).isoformat(),
+            "show_from": (start - timedelta(days=2)).isoformat(), "matchups": out}
+
+
 def histogram(values, bins=40):
     counts, edges = np.histogram(values, bins=bins)
     return {"edges": [round(float(e), 1) for e in edges], "counts": counts.tolist()}
@@ -470,6 +507,13 @@ def main():
     ctx, players, exp = write_odds(t, int(mp), sp_now, team_out, cur_draws, names, rng, avail,
                                    {pid: v["ros"] for pid, v in lt.items()})
     write_injuries(avail, roster, abbrev, sp_now)
+    try:
+        nxt = next_week_preview(t, int(mp), ctx, players, exp, names)
+        if nxt:
+            out["next"] = nxt
+            OUT.write_text(json.dumps(out, default=float, separators=(",", ":")), encoding="utf-8")
+    except Exception as e:
+        print(f"next-week preview skipped: {e}")
     roster_rows, cap_avg = {}, 0.0
     try:
         roster_rows, cap_avg = rosters.build(ctx, players, exp, lt, proj, team_out, roster, pool or {}, abbrev, names)

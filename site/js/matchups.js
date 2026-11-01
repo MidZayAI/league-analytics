@@ -10,12 +10,21 @@ window.Matchups = {
     return done.length ? Math.max(...done) : 1;
   },
   get isLiveWeek() { return this.isLiveSeason && this.weekSel === this.live.mp; },
+  // next week's preview appears from the Saturday before it starts
+  get nextWeek() {
+    const n = this.live?.next;
+    if (!this.isLiveSeason || !n) return null;
+    return new Date().toLocaleDateString('en-CA') >= n.show_from ? n : null;
+  },
+  get isNextWeek() { return !!this.nextWeek && this.weekSel === this.nextWeek.mp; },
   get weekList() {
     if (!this.S) return [];
     const played = new Set(this.S.weeks.filter((w) => w.result).map((w) => w.mp));
     if (this.isLiveSeason) played.add(this.live.mp);
+    if (this.nextWeek) played.add(this.nextWeek.mp);
     return this.S.caps.filter((c) => played.has(c.mp))
-      .map((c) => ({ mp: c.mp, playoff: c.playoff, live: this.isLiveSeason && c.mp === this.live.mp, dates: `${fmt.date(c.start)} – ${fmt.date(c.end)}` }));
+      .map((c) => ({ mp: c.mp, playoff: c.playoff, live: this.isLiveSeason && c.mp === this.live.mp,
+                     next: !!this.nextWeek && c.mp === this.nextWeek.mp, dates: `${fmt.date(c.start)} – ${fmt.date(c.end)}` }));
   },
   get liveDayLabel() {
     const D = this.live?.days || [];
@@ -54,7 +63,7 @@ window.Matchups = {
     if (win.over_cap || lose.over_cap) t.push({ key: 'cap', label: '⚠ Over cap' });
     return t;
   },
-  get weekGames() { return this.isLiveWeek ? [] : this.gamesFor(this.weekSel); },
+  get weekGames() { return this.isLiveWeek || this.isNextWeek ? [] : this.gamesFor(this.weekSel); },
   get weekHeader() {
     const c = this.cap(this.weekSel);
     return c ? { title: `Week ${c.mp}${c.playoff ? ' · Playoffs' : ''}`, dates: `${fmt.date(c.start)} – ${fmt.date(c.end)}`, cap: c.cap } : null;

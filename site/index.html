@@ -184,7 +184,7 @@
         <a href="#/waivers" class="week-chip" x-show="waivers">Waiver wire</a>
         <template x-for="w in weekList" :key="w.mp">
           <a :href="`#/matchups/${season}/${w.mp}`" class="week-chip" :class="w.mp === weekSel && 'active'">
-            <span x-show="w.live" class="live-dot"></span><span x-text="(w.playoff ? 'P' : 'Wk ') + w.mp"></span>
+            <span x-show="w.live" class="live-dot"></span><span x-text="(w.playoff ? 'P' : 'Wk ') + w.mp"></span><span x-show="w.next" class="text-[10px] text-muted ml-1">next</span>
           </a>
         </template>
       </div>
@@ -192,7 +192,8 @@
       <div class="flex flex-wrap items-end justify-between gap-2" x-show="weekHeader">
         <div>
           <div class="pill-live" x-show="isLiveWeek"><span class="live-dot"></span>IN PROGRESS</div>
-          <div class="label" x-show="!isLiveWeek">Final</div>
+          <div class="label" x-show="!isLiveWeek && !isNextWeek">Final</div>
+          <div class="label" x-show="isNextWeek">Up next · preview</div>
           <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5" x-text="weekHeader?.title"></h1>
           <div class="text-sm text-ink2" x-text="weekHeader?.dates"></div>
         </div>
@@ -244,8 +245,34 @@
         </template>
       </div>
 
+      <!-- next week (preview from the Saturday before) -->
+      <div class="grid md:grid-cols-2 gap-3" x-show="isNextWeek">
+        <template x-for="m in (isNextWeek ? nextWeek.matchups : [])" :key="m.matchup_id">
+          <div class="game">
+            <template x-for="s in [m.home, m.away]" :key="s.team_id">
+              <div class="flex items-center gap-3 py-1.5">
+                <img class="logo w-10 h-10" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(s.team_id)">
+                <div class="min-w-0 flex-1">
+                  <div class="font-semibold truncate" :class="s.win_prob < 0.5 && 'text-ink2'" x-text="s.name"></div>
+                  <div class="stat" x-text="`${s.games} player-games for ${nextWeek.cap} cap spots`"></div>
+                </div>
+                <div class="text-right">
+                  <div class="score" x-text="fmt.n(s.proj)"></div>
+                  <div class="text-[11.5px] font-semibold mt-0.5" :class="s.win_prob >= 0.5 ? 'text-ink' : 'text-muted'" x-text="fmt.pct(s.win_prob, 0)"></div>
+                </div>
+              </div>
+            </template>
+            <div class="winbar mt-2.5" role="img" :aria-label="`${m.home.name} ${fmt.pct(m.home.win_prob, 0)}, ${m.away.name} ${fmt.pct(m.away.win_prob, 0)}`">
+              <div :style="`width: ${m.home.win_prob * 100}%; background: ${teamColor(m.home.team_id)}`"></div>
+              <div :style="`width: ${m.away.win_prob * 100}%; background: ${teamColor(m.away.team_id)}`"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="text-[11.5px] text-muted" x-show="isNextWeek">Projected scores from each roster’s per-game projections, the NBA schedule and next week’s cap (same model as the playoff odds). Rosters can still change before Monday; the live forecast takes over when the week starts.</div>
+
       <!-- past week -->
-      <div class="grid md:grid-cols-2 gap-3" x-show="!isLiveWeek">
+      <div class="grid md:grid-cols-2 gap-3" x-show="!isLiveWeek && !isNextWeek">
         <template x-for="g in weekGames" :key="g.id">
           <a class="game" :href="matchupHref(g.id)">
             <template x-for="s in [g.a, g.b]" :key="s.team_id">
@@ -1925,7 +1952,7 @@
 <script src="js/charts.js?v=fa72ac853e"></script>
 <script src="js/core.js?v=f29eea5f8c"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
-<script src="js/matchups.js?v=02bc8618fb"></script>
+<script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
 <script src="js/league.js?v=965060248e"></script>
 <script src="js/history.js?v=428d3cc680"></script>
