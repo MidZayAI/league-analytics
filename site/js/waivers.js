@@ -2,10 +2,11 @@
    quality what matters), for the games left this week and next week, in league scoring. */
 
 window.Waivers = {
-  waivers: null, wvSort: 'fpg', wvPos: 'All', wvTeam: '', wvOpen: null, wvMode: 'week',
+  waivers: null, today: null, wvSort: 'fpg', wvPos: 'All', wvTeam: '', wvOpen: null, wvMode: 'week',
 
   async loadWaivers() {
-    this.waivers = await fetch('data/waivers.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const get = (f) => fetch(`data/${f}`, { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    [this.waivers, this.today] = await Promise.all([get('waivers.json'), get('today.json')]);
   },
   // projected FP per game for the chosen window: both weeks, this week, or next week
   wvFpg(r, key = this.wvSort) { return key === 'fpg' ? r.fpg : r[key]?.fpg; },
@@ -15,6 +16,9 @@ window.Waivers = {
       .slice().sort((a, b) => (this.wvFpg(b) ?? -1) - (this.wvFpg(a) ?? -1));
   },
   get wvRows() { return this.wvSorted(false); },
+  // today: betting-line FP only, free agents whose game hasn't started
+  get todayFree() { return (this.today?.free || []).filter((r) => this.wvPos === 'All' || r.pos === this.wvPos); },
+  tipTime(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''; },
   // long-term view: rest-of-season FP/g (with upside), short-term boosts stripped out
   get wvLong() {
     return (this.waivers?.longterm || []).filter((r) => r.lt && (this.wvPos === 'All' || r.pos === this.wvPos))

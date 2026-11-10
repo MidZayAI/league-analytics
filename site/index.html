@@ -304,7 +304,7 @@
         <div>
           <div class="label" x-text="waivers ? 'Updated ' + ago(waivers.updated_at) : ''"></div>
           <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Waiver wire
-            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How pickups are ranked">i</button><span class="pop" x-show="o" x-text="wvMode === 'long' ? glossary.longterm : glossary.waivers"></span></span></h1>
+            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How pickups are ranked">i</button><span class="pop" x-show="o" x-text="wvMode === 'long' ? glossary.longterm : wvMode === 'today' ? glossary.today : glossary.waivers"></span></span></h1>
         </div>
         <select class="week-chip !pr-7" x-model="wvTeam" aria-label="Compare with your team">
           <option value="">Compare with my team…</option>
@@ -314,10 +314,108 @@
       <div class="card text-sm text-ink2" x-show="!waivers">The waiver wire appears while a matchup week is in progress.</div>
       <div class="text-[12px] text-muted" x-show="waivers && !waivers.sleeper_ok">Sleeper projections are unavailable right now; ranking uses our model only.</div>
 
-      <div class="flex gap-1.5" x-show="waivers?.longterm?.length">
+      <div class="flex gap-1.5" x-show="waivers">
+        <button class="week-chip" :class="wvMode === 'today' && 'active'" @click="wvMode = 'today'">Today</button>
         <button class="week-chip" :class="wvMode === 'week' && 'active'" @click="wvMode = 'week'">This week</button>
         <button class="week-chip" :class="wvMode === 'long' && 'active'" @click="wvMode = 'long'">Long-term</button>
       </div>
+      <!-- today: betting lines only -->
+      <div x-show="waivers && wvMode === 'today'" class="space-y-3">
+        <div class="card text-sm text-ink2" x-show="!today || !today.free.length">No lines posted yet for today's games. Sportsbooks post player props about a day ahead; check back closer to tip-off.</div>
+
+        <template x-if="today && wvTeam && today.teams[wvTeam]">
+          <div class="card">
+            <h3 class="mb-0.5">My bench today</h3>
+            <div class="sub mb-2" x-text="`Start/sit by today's lines · ${today.teams[wvTeam].rem_cap} cap games left this week`"></div>
+            <template x-for="p in today.teams[wvTeam].players" :key="p.id">
+              <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                <span class="w-12 text-center rounded-md py-0.5 text-[10.5px] font-semibold shrink-0"
+                      :style="p.slot === 12 || p.slot === 13 ? 'border: 1px solid var(--grid); color: var(--muted)' : 'background: var(--s1); color: #fff'"
+                      x-text="p.slot === 12 ? 'bench' : p.slot === 13 ? 'IR' : 'starting'"></span>
+                <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5"><span class="text-[13px] font-medium truncate" x-text="p.name"></span>
+                    <span class="text-[10px] font-bold down" x-show="p.inj" x-text="injShort(p.inj)"></span></div>
+                  <div class="text-[10.5px] text-muted truncate" x-text="p.fp != null ? `${p.team} vs ${p.opp || '?'} · ${tipTime(p.tip)}${p.moved?.length ? ' · ' + p.moved.join(', ') : ''}` : `no line yet · model ${fmt.n(p.model, 1)}${p.p != null ? ', ' + fmt.pct(p.p, 0) + ' to play' : ''}`"></div>
+                </div>
+                <div class="text-right shrink-0"><div class="font-bold" x-text="p.fp != null ? fmt.n(p.fp, 1) : '–'"></div>
+                  <div class="text-[10px] text-muted" x-text="p.fp != null ? 'line FP' : 'no line'"></div></div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="card !p-0 overflow-hidden" x-show="today?.moved?.length">
+          <div class="px-4 pt-3 pb-1"><h3>Line moved</h3><div class="sub">Lines that changed since they opened: usually same-day injury news or a role change.</div></div>
+          <template x-for="r in today?.moved || []" :key="'m' + r.id">
+              <div class="border-b last:border-0" style="border-color: var(--grid)" x-data="{ open: false }">
+                <button class="w-full text-left flex items-center gap-3 px-4 py-2.5" @click="open = !open">
+                  <img class="hs w-10 h-10" :src="headshot(r.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-semibold text-sm truncate" x-text="r.name"></span>
+                      <span class="text-[10px] font-bold down" x-show="wvInj(r)" x-text="wvInj(r)"></span>
+                      <span class="text-[10px] font-bold text-muted" x-show="r.status === 'WAIVERS'" title="On waivers: claim, can't play today">W</span>
+                    </div>
+                    <div class="text-[11px] text-muted truncate" x-text="[`${r.team} vs ${r.opp || '?'}`, tipTime(r.tip), r.moved.length ? r.moved.join(', ') : 'lines unchanged since open'].filter(Boolean).join(' · ')"></div>
+                  </div>
+                  <div class="text-right shrink-0">
+                    <div class="font-extrabold" x-text="fmt.n(r.fp, 1)"></div>
+                    <div class="text-[10.5px] font-semibold" :class="(r.delta || 0) > 0.4 ? 'up' : (r.delta || 0) < -0.4 ? 'down' : 'text-muted'"
+                         x-text="r.delta == null ? 'line FP' : (Math.abs(r.delta) < 0.5 ? 'no move' : `${r.delta > 0 ? '▲' : '▼'} ${fmt.n(Math.abs(r.delta), 1)} since open`)"></div>
+                  </div>
+                </button>
+                <div x-show="open" class="px-4 pb-3 text-[12px] text-ink2">
+                  <div class="flex flex-wrap gap-1.5">
+                    <template x-for="(v, k) in r.lines" :key="k">
+                      <span class="rounded-md px-2 py-1" style="background: var(--wash)" x-text="`${k} ${v[0] != null && v[0] !== v[1] ? v[0] + ' → ' : ''}${v[1]} (exp ${fmt.n(r.means[k], 1)})`"></span>
+                    </template>
+                  </div>
+                  <div class="mt-1.5 text-muted" x-text="`At open: ${r.fp_open != null ? fmt.n(r.fp_open, 1) : '–'} FP. Turnovers and shooting come from Sleeper's projection for this game, scaled to the points line.`"></div>
+                </div>
+              </div>
+          </template>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5" x-show="today?.free?.length">
+          <template x-for="p in ['All', 'PG', 'SG', 'SF', 'PF', 'C']" :key="p">
+            <button class="week-chip" :class="wvPos === p && 'active'" @click="wvPos = p" x-text="p"></button>
+          </template>
+        </div>
+        <div class="card !p-0 overflow-hidden" x-show="today?.free?.length">
+          <div class="px-4 pt-3 pb-1"><h3>Top picks today</h3><div class="sub" x-text="`Free agents with a game today, ranked by fantasy points implied by DraftKings player props (${today?.lines || 0} players priced today), in this league's scoring.`"></div></div>
+          <template x-for="r in todayFree" :key="r.id">
+              <div class="border-b last:border-0" style="border-color: var(--grid)" x-data="{ open: false }">
+                <button class="w-full text-left flex items-center gap-3 px-4 py-2.5" @click="open = !open">
+                  <img class="hs w-10 h-10" :src="headshot(r.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-semibold text-sm truncate" x-text="r.name"></span>
+                      <span class="text-[10px] font-bold down" x-show="wvInj(r)" x-text="wvInj(r)"></span>
+                      <span class="text-[10px] font-bold text-muted" x-show="r.status === 'WAIVERS'" title="On waivers: claim, can't play today">W</span>
+                    </div>
+                    <div class="text-[11px] text-muted truncate" x-text="[`${r.team} vs ${r.opp || '?'}`, tipTime(r.tip), r.moved.length ? r.moved.join(', ') : 'lines unchanged since open'].filter(Boolean).join(' · ')"></div>
+                  </div>
+                  <div class="text-right shrink-0">
+                    <div class="font-extrabold" x-text="fmt.n(r.fp, 1)"></div>
+                    <div class="text-[10.5px] font-semibold" :class="(r.delta || 0) > 0.4 ? 'up' : (r.delta || 0) < -0.4 ? 'down' : 'text-muted'"
+                         x-text="r.delta == null ? 'line FP' : (Math.abs(r.delta) < 0.5 ? 'no move' : `${r.delta > 0 ? '▲' : '▼'} ${fmt.n(Math.abs(r.delta), 1)} since open`)"></div>
+                  </div>
+                </button>
+                <div x-show="open" class="px-4 pb-3 text-[12px] text-ink2">
+                  <div class="flex flex-wrap gap-1.5">
+                    <template x-for="(v, k) in r.lines" :key="k">
+                      <span class="rounded-md px-2 py-1" style="background: var(--wash)" x-text="`${k} ${v[0] != null && v[0] !== v[1] ? v[0] + ' → ' : ''}${v[1]} (exp ${fmt.n(r.means[k], 1)})`"></span>
+                    </template>
+                  </div>
+                  <div class="mt-1.5 text-muted" x-text="`At open: ${r.fp_open != null ? fmt.n(r.fp_open, 1) : '–'} FP. Turnovers and shooting come from Sleeper's projection for this game, scaled to the points line.`"></div>
+                </div>
+              </div>
+          </template>
+        </div>
+        <div class="text-[11.5px] text-muted" x-show="today">Betting lines only: no season averages, no model. Books post props about a day ahead and mainly for rotation players, so deep bench players won't show here. Updated <span x-text="today ? ago(today.updated_at) : ''"></span>.</div>
+      </div>
+
       <!-- long-term: rest-of-season FP/g, upside range, why -->
       <div x-show="waivers && wvMode === 'long'" class="space-y-2">
         <div class="flex flex-wrap gap-1.5">
@@ -1998,7 +2096,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=f29eea5f8c"></script>
+<script src="js/core.js?v=fc51aa2c0e"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2006,7 +2104,7 @@
 <script src="js/history.js?v=428d3cc680"></script>
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
-<script src="js/waivers.js?v=bdec953441"></script>
+<script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=a3e71e495f"></script>
 <script src="js/app.js?v=c1e4db2253"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>

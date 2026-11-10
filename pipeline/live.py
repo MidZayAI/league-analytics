@@ -19,6 +19,7 @@ import lineups  # noqa: E402
 import longterm  # noqa: E402
 import rosters  # noqa: E402
 import trades  # noqa: E402
+import today  # noqa: E402
 import injuries  # noqa: E402
 import nba_logs  # noqa: E402
 import pool as player_pool  # noqa: E402
@@ -528,8 +529,12 @@ def main():
             fa = waivers.build(pool, abbrev, proj, t, int(mp), sp_now, starts, now, roster, lt)
         except Exception as e:  # never fail the live forecast over the waiver list
             print(f"waivers skipped: {e}")
+        rem_caps = {s["team_id"]: s["rem_cap"] for m in matchups for s in (m["home"], m["away"])}
         try:
-            rem_caps = {s["team_id"]: s["rem_cap"] for m in matchups for s in (m["home"], m["away"])}
+            today.build(proj, pool, abbrev, roster, t, sp_now, starts, now, rem_caps, team_out)
+        except Exception as e:
+            print(f"today skipped: {e}")
+        try:
             lineups.build(proj, t, int(mp), sp_now, starts, now, roster, rem_caps, pool, abbrev, fa, week, team_out)
         except Exception as e:
             print(f"lineups skipped: {e}")

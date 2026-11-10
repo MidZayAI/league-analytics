@@ -28,7 +28,7 @@ import nba_logs  # noqa: E402
 from espn_client import ROOT  # noqa: E402
 
 CURRENT = int(os.environ.get("SEASON", 2027))
-CACHE = ROOT / "data" / "tidy" / f"props_{CURRENT}.json"
+CACHE = ROOT / "data" / "tidy" / f"props_v2_{CURRENT}.json"  # bump when the stored shape changes
 TTL = 3600
 SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
 PROPS = ("https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/{e}/competitions/{e}"
@@ -132,7 +132,19 @@ def fetch_props(dates, force=False):
                 if pair[1]["current"]["target"]["value"] != line:
                     continue
                 po, pu = _prob(pair[0]["odds"]["american"]["value"]), _prob(pair[1]["odds"]["american"]["value"])
-                out.setdefault(aid, {}).setdefault(day, {})[stat] = round(expected(stat, float(line), po / (po + pu)), 2)
+                g = out.setdefault(aid, {}).setdefault(day, {})
+                g[stat] = round(expected(stat, float(line), po / (po + pu)), 2)
+                # the opening line too: how far it moved since tells you about same-day news
+                try:
+                    oline = float(pair[0]["open"]["target"]["value"])
+                    oo, ou = _prob(pair[0]["odds"]["american"]["open"]), _prob(pair[1]["odds"]["american"]["open"])
+                    g.setdefault("_open", {})[stat] = round(expected(stat, oline, oo / (oo + ou)), 2)
+                    g.setdefault("_lines", {})[stat] = [oline, float(line)]
+                except (KeyError, TypeError, ValueError):
+                    g.setdefault("_lines", {})[stat] = [None, float(line)]
+                comp = ev["competitions"][0]
+                g["_tip"] = ev.get("date")
+                g["_teams"] = [c["team"]["abbreviation"] for c in comp.get("competitors", [])]
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps({"_fetched": time.time(), "dates": list(dates), "props": out}, separators=(",", ":")),
                      encoding="utf-8")
@@ -146,7 +158,7 @@ def market_fp(stats, sleeper_box=None, weights=None):
         return None
     w = weights or nba_logs.scoring_weights()
     box = dict(sleeper_box or {})
-    priced = {k: v for k, v in stats.items()}
+    priced = {k: v for k, v in stats.items() if not k.startswith("_")}  # "_" keys: opening lines, tip-off
     fp = sum(w.get(k, 0) * v for k, v in priced.items())
     sl_pts = box.get("PTS") or 0
     if sl_pts > 0:
