@@ -1208,14 +1208,40 @@
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div>
               <h3 class="flex items-center gap-2">Roster projections
-                <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How projections work">i</button><span class="pop" x-show="o" x-text="rsMode === 'week' ? glossary.projblend : glossary.longterm"></span></span></h3>
+                <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How projections work">i</button><span class="pop" x-show="o" x-text="rsMode === 'today' ? glossary.today : rsMode === 'week' ? glossary.projblend : glossary.longterm"></span></span></h3>
               <div class="sub" x-text="`~${fmt.n(teamRoster.weekly_sim, 0)} expected pts per remaining week (cap-aware)`"></div>
             </div>
             <div class="flex gap-1.5">
+              <button class="week-chip" :class="rsMode === 'today' && 'active'" @click="rsMode = 'today'">Today</button>
               <button class="week-chip" :class="rsMode === 'week' && 'active'" @click="rsMode = 'week'">This week</button>
               <button class="week-chip" :class="rsMode === 'ros' && 'active'" @click="rsMode = 'ros'">Rest of season</button>
             </div>
           </div>
+          <div x-show="rsMode === 'today'">
+            <div class="text-[12px] text-muted py-2" x-show="!teamToday.length">No games left today for this roster (or today's games have already tipped off).</div>
+            <template x-for="p in teamToday" :key="'t' + p.id">
+              <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[13px] font-medium truncate" x-text="p.name"></span>
+                    <span class="text-[10px] font-bold down shrink-0" x-show="p.inj" x-text="injShort(p.inj)"></span>
+                    <span class="text-[10px] text-muted shrink-0" x-show="p.slot === 13">IR</span>
+                    <span class="text-[10px] text-muted shrink-0" x-show="p.slot === 12">bench</span>
+                  </div>
+                  <div class="text-[10.5px] text-muted truncate"
+                       x-text="p.fp != null ? [`${p.team} vs ${p.opp || '?'}`, tipTime(p.tip), p.moved?.length ? p.moved.join(', ') : ''].filter(Boolean).join(' · ')
+                                            : [p.team, `no line yet · model ${fmt.n(p.model, 1)}`, p.p != null ? `${fmt.pct(p.p, 0)} to play` : ''].filter(Boolean).join(' · ')"></div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="font-bold text-[14px]" x-text="p.fp != null ? fmt.n(p.fp, 1) : '–'"></div>
+                  <div class="text-[10px]" :class="(p.delta || 0) > 0.4 ? 'up' : (p.delta || 0) < -0.4 ? 'down' : 'text-muted'"
+                       x-text="p.fp == null ? 'no line' : (p.delta == null || Math.abs(p.delta) < 0.5 ? 'line FP' : `${p.delta > 0 ? '▲' : '▼'} ${fmt.n(Math.abs(p.delta), 1)} since open`)"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div x-show="rsMode !== 'today'">
           <template x-for="p in teamRoster.players" :key="p.id">
             <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)" x-data="{ open: false }" @click="open = !open">
               <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
@@ -1238,7 +1264,8 @@
               </div>
             </div>
           </template>
-          <div class="text-[11px] text-muted mt-2" x-text="rsMode === 'week' ? 'FP per game he plays in the games left this matchup week.' : 'Projected FP per game for the rest of the season, temporary bumps removed; upside = a realistic good case (about 1 in 4).'"></div>
+          </div>
+          <div class="text-[11px] text-muted mt-2" x-text="rsMode === 'today' ? 'Today\u2019s games that haven\u2019t tipped off, by fantasy points implied by DraftKings player props (betting lines only, this league\u2019s scoring). Players without a line show our model instead.' : rsMode === 'week' ? 'FP per game he plays in the games left this matchup week.' : 'Projected FP per game for the rest of the season, temporary bumps removed; upside = a realistic good case (about 1 in 4).'"></div>
         </div>
         </template>
 
@@ -2105,7 +2132,7 @@
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
-<script src="js/trades.js?v=a3e71e495f"></script>
+<script src="js/trades.js?v=8b8ed40393"></script>
 <script src="js/app.js?v=c1e4db2253"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>

@@ -8,6 +8,11 @@ window.Trades = {
     [this.rosters, this.tradesData] = await Promise.all([get('rosters.json'), get('trades.json')]);
   },
   rosterOf(teamId) { return this.isLiveSeason ? this.rosters?.teams?.[teamId] || null : null; },
+  // today: betting-line projections for this team's players with a game left today (today.json)
+  get teamToday() {
+    const t = this.T && this.isLiveSeason ? this.today?.teams?.[this.T.team_id] : null;
+    return (t?.players || []).slice().sort((a, b) => (b.fp ?? b.model ?? 0) - (a.fp ?? a.model ?? 0));
+  },
   get teamRoster() {
     const r = this.T && this.rosterOf(this.T.team_id);
     if (!r) return null;
