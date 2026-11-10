@@ -807,43 +807,91 @@
       <div class="card text-sm text-ink2" x-show="!rosters">The trade analyzer appears while the season is in progress.</div>
 
       <template x-for="tr in tradesData?.trades || []" :key="tr.id">
-        <div class="card">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="card space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 x-text="tr.teams.map((s) => s.name).join(' ⇄ ')"></h3>
-              <div class="sub" x-text="`${fmt.date(tr.date)} · ${tr.status}${tr.status === 'In review' ? ' (not yet processed)' : ''}`"></div>
+              <div class="sub" x-text="tr.status === 'Processed' ? `Agreed ${fmt.date(tr.date)} · processed ${fmt.date(tr.processed_date)}` : `Agreed ${fmt.date(tr.date)} · in review (not yet processed)`"></div>
             </div>
             <button class="week-chip" @click="trLoad(tr)">Open in builder</button>
           </div>
+
+          <!-- verdict -->
+          <div class="rounded-xl p-3 text-[13.5px] space-y-1" style="background: var(--wash)">
+            <div class="font-semibold" x-show="tr.verdict.so_far" x-text="tr.verdict.so_far"></div>
+            <div class="font-semibold" x-text="tr.even ? 'Going forward: close to even.' : tr.verdict.forward"></div>
+            <div class="text-ink2" x-show="tr.verdict.split">The two disagree: one side has won it so far, the other wins the rest of the season.</div>
+            <div class="text-[11.5px] text-muted" x-show="tr.first" x-text="tr.first ? 'At the time: ' + tr.first.teams.map((f) => `${tr.teams.find((s) => s.team_id === f.team_id)?.name} ${fmt.signed(f.weekly, 0)}/wk, title ${pctPts(f.odds.title)}`).join(' · ') : ''"></div>
+          </div>
+
           <div class="grid md:grid-cols-2 gap-3">
             <template x-for="s in tr.teams" :key="s.team_id">
-              <div class="rounded-xl p-3" style="background: var(--wash)">
-                <div class="flex items-center gap-2 mb-2">
+              <div class="rounded-xl p-3 space-y-2.5" style="background: var(--wash)">
+                <div class="flex items-center gap-2">
                   <img class="logo w-6 h-6" :src="logoOf(s.team_id)" alt="" @error="$el.src = silhouette">
                   <span class="font-bold truncate" x-text="s.name"></span>
                 </div>
                 <template x-for="(grp, gi) in [['Gets', s.in], ['Gives', s.out]]" :key="gi">
-                  <div class="mb-2">
+                  <div>
                     <div class="label mb-1" x-text="grp[0]"></div>
                     <template x-for="p in grp[1]" :key="p.id">
-                      <div class="flex items-center gap-2 py-0.5 text-[13px]">
-                        <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" @error="$el.src = silhouette">
-                        <span class="truncate flex-1" x-text="`${p.name} (${p.pro})`"></span>
-                        <span class="font-semibold" x-text="`${fmt.n(p.ros, 1)}/g`"></span>
+                      <div class="py-1">
+                        <div class="flex items-center gap-2 text-[13px]">
+                          <img class="hs w-8 h-8" :src="headshot(p.id)" alt="" @error="$el.src = silhouette">
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5"><span class="truncate font-medium" x-text="`${p.name} (${p.pro})`"></span>
+                              <span class="text-[10px] font-bold down" x-show="p.inj" x-text="injShort(p.inj)"></span></div>
+                            <div class="text-[11px] text-muted truncate" x-text="[p.since ? `since trade ${p.since.fpg != null ? fmt.n(p.since.fpg, 1) + '/g' : '–'} (${p.since.gp} gp, ${fmt.n(p.since.counted, 0)} counted)` : '', p.gpw ? `${fmt.n(p.gpw, 1)} games/wk` : '', p.avail != null && p.avail < 0.8 ? `plays ~${fmt.pct(p.avail, 0)}` : '', p.tags?.[0]].filter(Boolean).join(' · ')"></div>
+                          </div>
+                          <div class="text-right shrink-0"><div class="font-semibold" x-text="`${fmt.n(p.ros, 1)}/g`"></div><div class="text-[10px] text-muted" x-text="p.upside ? `up ${fmt.n(p.upside, 0)}` : 'rest of season'"></div></div>
+                        </div>
                       </div>
                     </template>
                   </div>
                 </template>
-                <div class="grid grid-cols-3 gap-2 text-center mt-2">
-                  <div><div class="label">Pts / week</div><div class="font-extrabold" :class="s.weekly > 0 ? 'up' : 'down'" x-text="fmt.signed(s.weekly, 0)"></div></div>
-                  <div><div class="label">Playoffs</div><div class="font-extrabold" :class="s.odds.playoff > 0 ? 'up' : 'down'" x-text="pctPts(s.odds.playoff)"></div><div class="text-[10px] text-muted" x-text="`→ ${fmt.pct(s.odds_after.playoff, 0)}`"></div></div>
-                  <div><div class="label">Title</div><div class="font-extrabold" :class="s.odds.title > 0 ? 'up' : 'down'" x-text="pctPts(s.odds.title)"></div><div class="text-[10px] text-muted" x-text="`→ ${fmt.pct(s.odds_after.title, 0)}`"></div></div>
+                <template x-if="s.so_far && (s.so_far.spot.length || s.so_far.drops.length)">
+                  <div>
+                    <div class="label mb-1">Roster spot</div>
+                    <template x-for="h in s.so_far.spot" :key="h.id">
+                      <div class="text-[12px] flex justify-between gap-2"><span class="truncate" x-text="`+ ${h.name} (picked up ${fmt.date(h.since)}${h.to ? ', dropped ' + fmt.date(h.to) : ''})`"></span>
+                        <span class="shrink-0" x-text="`${fmt.n(h.counted, 0)} counted · ${fmt.n(h.total, 0)} total`"></span></div>
+                    </template>
+                    <template x-for="x in s.so_far.drops" :key="x.id">
+                      <div class="text-[12px] flex justify-between gap-2"><span class="truncate down" x-text="`− ${x.name} (forced drop)`"></span>
+                        <span class="shrink-0" x-text="`${fmt.n(x.total, 0)} pts since elsewhere`"></span></div>
+                    </template>
+                    <div class="text-[11px] text-muted mt-0.5" x-show="s.spot_holder" x-text="s.spot_holder ? `Spot now held by ${s.spot_holder.name} (${fmt.n(s.spot_holder.ros, 1)}/g rest of season)` : ''"></div>
+                  </div>
+                </template>
+                <div class="grid grid-cols-3 gap-2 text-center pt-1 border-t" style="border-color: var(--grid)">
+                  <div><div class="label">So far</div><div class="font-extrabold" x-text="s.so_far ? fmt.n(tradeScore(s), 0) : '–'"></div><div class="text-[10px] text-muted">counted pts</div></div>
+                  <div><div class="label">Pts / week</div><div class="font-extrabold" :class="s.weekly > 0 ? 'up' : 'down'" x-text="fmt.signed(s.weekly, 0)"></div><div class="text-[10px] text-muted">going forward</div></div>
+                  <div><div class="label">Title</div><div class="font-extrabold" :class="s.odds.title > 0 ? 'up' : 'down'" x-text="pctPts(s.odds.title)"></div><div class="text-[10px] text-muted" x-text="`playoffs ${pctPts(s.odds.playoff)} → ${fmt.pct(s.odds_after.playoff, 0)}`"></div></div>
                 </div>
+                <template x-if="s.so_far?.weeks?.length">
+                  <div class="text-[11.5px] space-y-0.5">
+                    <template x-for="w in s.so_far.weeks" :key="w.mp">
+                      <div :class="w.decided ? 'font-semibold' : 'text-ink2'"
+                           x-text="`Wk ${w.mp}: ${w.result} by ${fmt.n(Math.abs(w.margin), 0)} · trade net ${fmt.signed(w.net, 0)}` + (w.decided ? (w.result === 'W' ? ' · the trade won it' : ' · the trade cost it') : '')"></div>
+                    </template>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
-          <div class="text-[13px] mt-3 font-semibold" x-text="tr.even ? 'Close to even.' : tr.verdict"></div>
-          <div class="text-[11px] text-muted mt-1">Exact: the rest of the season simulated with rosters before vs after the trade, same random numbers. Odds changes are percentage points.</div>
+
+          <div class="grid lg:grid-cols-2 gap-4" x-show="tr.status === 'Processed'">
+            <div>
+              <div class="font-medium text-sm mb-1">Counted points since the trade</div>
+              <div class="chart h-56" x-chart="tradeCumChart(tr)"></div>
+              <div class="text-[11px] text-muted">Incoming players + roster-spot pickups, points that counted in started lineups.</div>
+            </div>
+            <div>
+              <div class="font-medium text-sm mb-1">Playoff and title odds by week</div>
+              <div class="chart h-56" x-chart="tradeOddsChart(tr)"></div>
+            </div>
+          </div>
+          <div class="text-[11px] text-muted">Going forward is exact: the rest of the season simulated with vs without the trade (same random numbers), each player at his rest-of-season FP/g, cap-aware. Odds changes are percentage points. "Trade net" = counted points from incoming players and roster-spot pickups minus what the outgoing players counted for their new team.</div>
         </div>
       </template>
 
@@ -1959,7 +2007,7 @@
 <script src="js/odds.js?v=4f8928971d"></script>
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=bdec953441"></script>
-<script src="js/trades.js?v=75e9fadf86"></script>
+<script src="js/trades.js?v=a3e71e495f"></script>
 <script src="js/app.js?v=c1e4db2253"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>

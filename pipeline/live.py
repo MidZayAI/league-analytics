@@ -517,7 +517,7 @@ def main():
     roster_rows, cap_avg = {}, 0.0
     try:
         roster_rows, cap_avg = rosters.build(ctx, players, exp, lt, proj, team_out, roster, pool or {}, abbrev, names)
-        trades.build(c, sp_now, ctx, players, exp, roster_rows, cap_avg, names)
+        trades.build(c, sp_now, ctx, players, exp, roster_rows, cap_avg, names, t)
     except Exception as e:  # never fail the live forecast over rosters/trades
         import traceback
         traceback.print_exc()
