@@ -1565,38 +1565,89 @@
         </div>
       </div>
 
-      <!-- waiver wire value -->
+      <!-- waiver wire: at a glance -->
       <div x-show="DR && drTab === 'waivers'" class="space-y-4">
-        <div class="card !p-0 overflow-x-auto">
-          <table class="tbl w-full">
-            <thead><tr><th>#</th><th>Team</th><th class="num">Waiver WAR</th><th class="num">PAR</th><th class="num">Pickups</th><th>Best pickup</th></tr></thead>
-            <tbody>
-              <template x-for="w in DR?.waivers || []" :key="w.team_id">
-                <tr>
-                  <td x-text="w.rank"></td>
-                  <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(w.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(w.team_id)"></span></div></td>
-                  <td class="num font-bold" :class="w.war > 0 ? 'up' : w.war < 0 ? 'down' : ''" x-text="fmt.signed(w.war, 1)"></td>
-                  <td class="num text-ink2" x-text="fmt.n(w.par, 0)"></td>
-                  <td class="num text-ink2" x-text="w.adds"></td>
-                  <td class="text-[12px]" x-text="w.best && drAdd(w.best, w.team_id) ? `${drAdd(w.best, w.team_id).name} (${fmt.signed(drAdd(w.best, w.team_id).war, 1)})` : ''"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-        <div class="card">
-          <h3 class="mb-0.5">Best pickups</h3>
-          <div class="sub mb-2">Points that counted in the lineup while on the roster, above what a replacement player would have given in those games.</div>
-          <template x-for="a in drTopAdds" :key="a.player_id + '-' + a.team_id + '-' + a.added">
-            <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
-              <img class="hs w-8 h-8" :src="headshot(a.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
-              <div class="min-w-0 flex-1">
-                <div class="text-[13px] font-medium truncate" x-text="a.name"></div>
-                <div class="text-[10.5px] text-muted truncate" x-text="`${drName(a.team_id)} · added ${fmt.date(a.added)}${a.dropped ? ', dropped ' + fmt.date(a.dropped) : ''} · ${a.counted_gp} counted games, ${fmt.n(a.counted_fp, 0)} pts`"></div>
+        <template x-if="DR?.waiver_headline">
+          <div class="card">
+            <div class="label" x-text="DR.complete ? 'Best waiver work' : 'Best waiver work so far'"></div>
+            <div class="flex items-center gap-3 mt-1">
+              <img class="logo w-12 h-12" :src="logoOf(DR.waiver_headline.team_id)" alt="" @error="$el.src = silhouette">
+              <div class="min-w-0">
+                <div class="text-xl font-extrabold tracking-tight" x-text="`${drName(DR.waiver_headline.team_id)} · ${DR.waiver_headline.grade}`"></div>
+                <div class="text-[13px] text-ink2" x-text="`${fmt.n(DR.waiver_headline.counted_fp, 0)} points that counted came from pickups (${fmt.signed(DR.waiver_headline.par, 0)} above replacement)` + (DR.waiver_headline.best ? ` · best find ${DR.waiver_headline.best}${DR.waiver_headline.best_rank ? ', played like the #' + DR.waiver_headline.best_rank + ' player per game' : ''}` : '')"></div>
               </div>
-              <div class="text-right shrink-0"><div class="font-bold" x-text="fmt.signed(a.war, 2)"></div><div class="text-[10px] text-muted" x-text="`${fmt.signed(a.par, 0)} PAR`"></div></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- grade cards -->
+        <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <template x-for="w in DR?.waivers || []" :key="w.team_id">
+            <div class="card !p-4">
+              <div class="flex items-center gap-2">
+                <img class="logo w-8 h-8" :src="logoOf(w.team_id)" alt="" @error="$el.src = silhouette">
+                <span class="font-bold truncate flex-1" x-text="drName(w.team_id)"></span>
+                <span class="text-2xl font-extrabold" :style="`color: ${drGradeColor(w.grade)}`" x-text="w.grade"></span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mt-3 text-center">
+                <div class="rounded-lg py-1.5" style="background: var(--wash)"><div class="label">Paid off</div><div class="font-bold" x-text="`${w.hits} / ${w.adds}`"></div></div>
+                <div class="rounded-lg py-1.5" style="background: var(--wash)"><div class="label">vs league</div><div class="font-bold" :class="w.vs_avg > 0 ? 'up' : w.vs_avg < 0 ? 'down' : ''" x-text="`${fmt.signed(w.vs_avg, 0)} pts`"></div></div>
+              </div>
+              <div class="text-[12px] mt-2.5 space-y-0.5">
+                <div class="truncate" x-text="drAddLine('Best', w.best, w.team_id)"></div>
+                <div class="truncate text-ink2" x-text="drAddLine('Flop', w.worst, w.team_id)"></div>
+              </div>
             </div>
           </template>
+        </div>
+
+        <!-- best finds & flops -->
+        <div class="grid md:grid-cols-2 gap-3">
+          <template x-for="col in [['Best finds', drTopAdds.slice(0, 5), 'up'], ['Biggest flops', drFlops, 'down']]" :key="col[0]">
+            <div class="card">
+              <h3 class="mb-2" x-text="col[0]"></h3>
+              <template x-for="a in col[1]" :key="a.player_id + '-' + a.team_id + '-' + a.added">
+                <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                  <img class="hs w-9 h-9" :src="headshot(a.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-semibold truncate" x-text="a.name"></div>
+                    <div class="text-[11px] text-muted truncate" x-text="[drName(a.team_id), `added ${fmt.date(a.added)}${a.dropped ? ', dropped ' + fmt.date(a.dropped) : ''}`, a.pg_rank ? `played like #${a.pg_rank} per game` : '', `${a.counted_gp} counted games`].filter(Boolean).join(' · ')"></div>
+                  </div>
+                  <span class="font-extrabold text-[14px] shrink-0" :class="col[2]" x-text="fmt.signed(a.par, 0)"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- team chart -->
+        <div class="card">
+          <div class="font-medium text-sm mb-0.5">Waiver points vs the league</div>
+          <div class="sub mb-1">Points above replacement that counted in the lineup from pickups, compared with the league average.</div>
+          <div class="chart h-64" x-chart="drWaiverChart()"></div>
+        </div>
+
+        <!-- details -->
+        <div x-data="{ more: false }">
+          <button class="week-chip" @click="more = !more" x-text="more ? 'Hide details' : 'Show details'"></button>
+          <div class="card !p-0 overflow-x-auto mt-3" x-show="more">
+            <table class="tbl w-full">
+              <thead><tr><th>Team</th><th class="num">Waiver WAR</th><th class="num">PAR</th><th class="num">Counted pts</th><th class="num">Pickups</th><th class="num">Used</th></tr></thead>
+              <tbody>
+                <template x-for="w in DR?.waivers || []" :key="w.team_id">
+                  <tr>
+                    <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(w.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(w.team_id)"></span></div></td>
+                    <td class="num font-bold" x-text="fmt.signed(w.war, 1)"></td>
+                    <td class="num" x-text="fmt.n(w.par, 0)"></td>
+                    <td class="num text-ink2" x-text="fmt.n(w.counted_fp, 0)"></td>
+                    <td class="num text-ink2" x-text="w.adds"></td>
+                    <td class="num text-ink2" x-text="w.used"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <div class="text-[11px] text-muted p-3">"Paid off" = pickups that beat replacement level in the games they counted. "Used" = pickups who counted in at least one game. Grades compare points above replacement per week with every team-season on record.</div>
+          </div>
         </div>
       </div>
     </section>
@@ -2323,7 +2374,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=fe3751a934"></script>
+<script src="js/core.js?v=a187fab441"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2333,7 +2384,7 @@
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=8b8ed40393"></script>
-<script src="js/draft.js?v=ad2a8267db"></script>
+<script src="js/draft.js?v=16f004af6f"></script>
 <script src="js/app.js?v=72d19db3fd"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>

@@ -79,4 +79,27 @@ window.Draft = {
     return parts.slice(-1)[0] || name;
   },
   get drTopAdds() { return (this.DR?.adds || []).slice(0, 15); },
+  // pickups that were actually used (counted at least once) and came out furthest below replacement
+  get drFlops() { return (this.DR?.adds || []).filter((a) => a.counted_gp > 0).slice().sort((a, b) => a.par - b.par).slice(0, 5); },
+  drAddLine(label, pid, tid) {
+    const a = this.drAdd(pid, tid);
+    return a ? `${label}: ${a.name} ${a.par > 0 ? '+' : ''}${Math.round(a.par)} pts${a.pg_rank ? ` (played like #${a.pg_rank})` : ''}` : '';
+  },
+  drWaiverChart() {
+    void this.themeTick;
+    const W = this.DR?.waivers;
+    if (!W?.length) return null;
+    const rows = W.slice().sort((a, b) => a.vs_avg - b.vs_avg);
+    return { option: {
+      ...base(), grid: { ...base().grid, top: 8, right: 24 },
+      tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: (ps) => { const w = rows[ps[0].dataIndex];
+          return `<b>${ps[0].name}</b>` + tipRow('vs league', fmt.signed(w.vs_avg, 0)) + tipRow('Above replacement', fmt.n(w.par, 0))
+            + tipRow('Pickups paid off', `${w.hits} / ${w.adds}`); } },
+      yAxis: catAxis(rows.map((w) => this.drName(w.team_id))),
+      xAxis: axis({ type: 'value' }),
+      series: [{ type: 'bar', barWidth: 16, data: rows.map((w) => ({ value: w.vs_avg,
+        itemStyle: { color: TOK(w.vs_avg >= 0 ? '--s1' : '--bad') } })) }],
+    } };
+  },
 };

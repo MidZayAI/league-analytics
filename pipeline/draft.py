@@ -242,7 +242,14 @@ def analyze_season(season):
                      "added": dates[int(r.first)].isoformat(), "dropped": dates[int(r.last) + 1].isoformat() if r.last < sp1 else None,
                      "counted_gp": gp, "counted_fp": round(fp, 1), "par": round(par, 1), "war": round(par / ppw, 2),
                      "gp": tgp, "fp": round(tot, 1)})
+    # "played like the #N player": his FP/game while on the roster vs the season's regulars
+    pg = sorted((tot_ / g_ for tot_, g_ in season_fp.values() if g_ >= MIN_SHARE * tg), reverse=True)
+    for a in adds:
+        a["fpg"] = round(a["fp"] / a["gp"], 1) if a["gp"] else None
+        a["pg_rank"] = (1 + sum(v > a["fpg"] for v in pg)) if a["gp"] >= 3 else None
     out["adds"] = sorted(adds, key=lambda a: -a["par"])
+    reg = t["matchups"][~t["matchups"].playoff & t["matchups"].result.isin(["W", "L", "T"])]
+    out["weeks_done"] = int(reg.mp.nunique())
     return out
 
 
@@ -309,10 +316,18 @@ def team_tables(s, fit):
     wv = []
     for tid in sorted({p["team_id"] for p in picks}):
         mine = [a for a in s["adds"] if a["team_id"] == tid]
+        weeks = max(s.get("weeks_done") or 1, 1)
         wv.append({"team_id": tid, "adds": len(mine), "par": round(sum(a["par"] for a in mine), 1),
                    "war": round(sum(a["war"] for a in mine), 2),
-                   "best": max(mine, key=lambda a: a["par"])["player_id"] if mine else None})
-    wv.sort(key=lambda w: -w["war"])
+                   "counted_fp": round(sum(a["counted_fp"] for a in mine), 1),
+                   "hits": sum(a["par"] > 0 for a in mine), "used": sum(a["counted_gp"] > 0 for a in mine),
+                   "par_per_week": round(sum(a["par"] for a in mine) / weeks, 1),
+                   "best": max(mine, key=lambda a: a["par"])["player_id"] if mine else None,
+                   "worst": min((a for a in mine if a["counted_gp"] > 0), key=lambda a: a["par"], default={"player_id": None})["player_id"]})
+    avg = float(np.mean([w["par"] for w in wv])) if wv else 0.0
+    for w in wv:
+        w["vs_avg"] = round(w["par"] - avg)
+    wv.sort(key=lambda w: -w["par"])
     for i, w in enumerate(wv):
         w["rank"] = i + 1
     s["waivers"] = wv
@@ -330,6 +345,7 @@ def letter(pct):
 def letter_grades(seasons):
     """Grade = percentile of spots gained per pick among every team-draft on record."""
     allv = sorted(g["spots_per_pick"] for s in seasons for g in s["grades"])
+    wallv = sorted(w["par_per_week"] for s in seasons for w in s["waivers"])
     n = len(allv)
     for s in seasons:
         for g in s["grades"]:
@@ -338,6 +354,17 @@ def letter_grades(seasons):
             pct = (below + 0.5 * same) / n
             g["pct"] = round(pct, 3)
             g["grade"] = letter(pct)
+        for w in s["waivers"]:
+            below = sum(v < w["par_per_week"] for v in wallv)
+            same = sum(v == w["par_per_week"] for v in wallv)
+            w["pct"] = round((below + 0.5 * same) / len(wallv), 3)
+            w["grade"] = letter(w["pct"])
+        tw = s["waivers"][0]
+        bw = next((a for a in s["adds"] if a["player_id"] == tw["best"] and a["team_id"] == tw["team_id"]), None)
+        s["waiver_headline"] = {"team_id": tw["team_id"], "grade": tw["grade"], "par": tw["par"], "counted_fp": tw["counted_fp"],
+                                "hits": tw["hits"], "adds": tw["adds"], "best": bw["name"] if bw else None,
+                                "best_par": bw["par"] if bw else None, "best_rank": bw["pg_rank"] if bw else None,
+                                "best_gp": bw["counted_gp"] if bw else None}
         top = s["grades"][0]
         best = next(p for p in s["picks"] if p["player_id"] == top["best_spots"] and p["team_id"] == top["team_id"])
         s["headline"] = {"team_id": top["team_id"], "grade": top["grade"], "hits": top["hits"], "picks": top["picks"],
