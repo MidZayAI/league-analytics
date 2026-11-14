@@ -1611,7 +1611,7 @@
                   <img class="hs w-9 h-9" :src="headshot(a.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
                   <div class="min-w-0 flex-1">
                     <div class="text-[13px] font-semibold truncate" x-text="a.name"></div>
-                    <div class="text-[11px] text-muted truncate" x-text="[drName(a.team_id), `added ${fmt.date(a.added)}${a.dropped ? ', dropped ' + fmt.date(a.dropped) : ''}`, a.pg_rank ? `played like #${a.pg_rank} per game` : '', `${a.counted_gp} counted games`].filter(Boolean).join(' · ')"></div>
+                    <div class="text-[11px] text-muted truncate" x-text="[drName(a.team_id), `${a.preseason ? 'added before the season' : 'added ' + fmt.date(a.added)}${a.dropped ? ', dropped ' + fmt.date(a.dropped) : ''}`, a.pg_rank ? `played like #${a.pg_rank} per game` : '', `${a.counted_gp} counted games`].filter(Boolean).join(' · ')"></div>
                   </div>
                   <span class="font-extrabold text-[14px] shrink-0" :class="col[2]" x-text="fmt.signed(a.par, 0)"></span>
                 </div>
@@ -2374,7 +2374,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=a187fab441"></script>
+<script src="js/core.js?v=c437f7991b"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>

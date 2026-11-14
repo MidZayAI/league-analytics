@@ -229,11 +229,15 @@ def analyze_season(season):
     # ---- waiver / free-agent pickups: counted games above replacement while on the roster
     adds = []
     drafted = {(p["playerId"], p["teamId"]) for p in picks}
+    drafted_any = {p["playerId"] for p in picks}
     for r in st.itertuples():
         if r.first == sp0 and (r.player_id, r.team_id) in drafted:
             continue
         from_trade = pd.notna(r.prev_team) and r.prev_last == r.first - 1 and r.prev_team != r.team_id
-        if from_trade or r.first == sp0:
+        # on a roster from opening day without being drafted there: a pre-season pickup (or, if another
+        # team drafted him, a pre-season trade)
+        preseason = r.first == sp0
+        if from_trade or (preseason and r.player_id in drafted_any):
             continue
         fp, gp = prod(r.player_id, r.team_id, int(r.first), int(r.last), counted_only=True)
         tot, tgp = prod(r.player_id, r.team_id, int(r.first), int(r.last))
@@ -241,7 +245,7 @@ def analyze_season(season):
         adds.append({"team_id": int(r.team_id), "player_id": int(r.player_id), "name": names.get(r.player_id),
                      "added": dates[int(r.first)].isoformat(), "dropped": dates[int(r.last) + 1].isoformat() if r.last < sp1 else None,
                      "counted_gp": gp, "counted_fp": round(fp, 1), "par": round(par, 1), "war": round(par / ppw, 2),
-                     "gp": tgp, "fp": round(tot, 1)})
+                     "gp": tgp, "fp": round(tot, 1), "preseason": bool(preseason)})
     # "played like the #N player": his FP/game while on the roster vs the season's regulars
     pg = sorted((tot_ / g_ for tot_, g_ in season_fp.values() if g_ >= MIN_SHARE * tg), reverse=True)
     for a in adds:
