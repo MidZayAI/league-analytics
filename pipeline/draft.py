@@ -13,9 +13,16 @@
   vs slot       a pick's PAR minus what that draft slot usually delivers to its drafter over the same
                 window (a fit of credited PAR per team-game on ln(overall pick) across completed seasons)
 
-Offline drafts with a third-round reversal (config/draft_rules.json) are recorded by ESPN with plain
-snake pick numbers; for rounds 3+ the real spot within the round is teams + 1 - ESPN's spot. The team
-and player of each pick are right (checked against opening-day rosters).
+At a glance, "played like": every NBA player is ranked by total fantasy points over the same window
+(his whole season, whichever team he ended up on). Spots gained = overall pick - that rank, with the
+rank capped at the replacement band (an unrosterable bust counts as replacement level, not rank 300).
+A hit = a pick that outperformed its slot. Teams get a letter grade from their spots gained per pick,
+as a percentile of every team-draft on record (A 85th+, B 60th+, C 35th+, D 15th+, else F).
+
+Pick numbers: ESPN's offline-draft records have the right player on the right team but can have the
+wrong pick numbers. config/draft_order_{season}.json (transcribed from the league's draft board) sets
+the real overall pick for every player; otherwise seasons in config/draft_rules.json get the
+third-round-reversal fix (rounds 3+: real spot within the round = teams + 1 - ESPN's spot).
 
 Usage: python pipeline/draft.py
 """
@@ -55,8 +62,31 @@ def picks_for(season):
     return out
 
 
-def fix_order(picks, season, n_teams):
-    """Real pick numbers: rounds 3+ reversed for third-round-reversal seasons."""
+def _norm(name):
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\b(jr|sr|ii|iii|iv)\b\.?", "", s)
+    return re.sub(r"[^a-z]", "", s)
+
+
+def fix_order(picks, season, n_teams, names=None):
+    """Real pick numbers: from the league's draft board when transcribed, else the third-round-reversal
+    fix for seasons that used it, else ESPN's. Returns (picks, how) with how in board/reversal/espn."""
+    board = ROOT / "config" / f"draft_order_{season}.json"
+    if board.exists() and names:
+        cfg = json.loads(board.read_text(encoding="utf-8"))
+        overall_of = {_norm(n): ov for slot in cfg["slots"] for ov, n in slot}
+        out = []
+        for p in picks:
+            ov = overall_of.get(_norm(names.get(p["playerId"])))
+            if ov is None:
+                raise ValueError(f"draft board {season}: no pick for {names.get(p['playerId'])}")
+            r = (ov - 1) // n_teams + 1
+            out.append({**p, "round": r, "spot": ov - (r - 1) * n_teams, "overall": ov})
+        if sorted(p["overall"] for p in out) != list(range(1, len(out) + 1)):
+            raise ValueError(f"draft board {season}: overall picks don't run 1..{len(out)}")
+        return sorted(out, key=lambda p: p["overall"]), "board"
     rules = json.loads(RULES.read_text(encoding="utf-8")) if RULES.exists() else {}
     flip = season in set(rules.get("third_round_reversal", []))
     out = []
@@ -65,7 +95,7 @@ def fix_order(picks, season, n_teams):
         if flip and r >= 3:
             spot = n_teams + 1 - spot
         out.append({**p, "round": r, "spot": spot, "overall": (r - 1) * n_teams + spot})
-    return sorted(out, key=lambda p: p["overall"]), flip
+    return sorted(out, key=lambda p: p["overall"]), ("reversal" if flip else "espn")
 
 
 def stints(daily):
@@ -100,6 +130,17 @@ def replacement(season, d0, d1, rostered):
     return float(band.mean()) if len(band) else None
 
 
+def season_ranks(season, d0, d1):
+    """Every NBA player's total fantasy points over [d0, d1] and his rank by them (1 = most)."""
+    tot = {}
+    for aid, a in nba_logs.load(season).items():
+        g = [fp for _, day, _, mins, fp in a["games"] if d0 <= day <= d1 and mins]
+        if g:
+            tot[int(aid)] = (float(sum(g)), len(g))
+    order = sorted(tot, key=lambda a: -tot[a][0])
+    return tot, {a: i + 1 for i, a in enumerate(order)}
+
+
 def points_per_win(m):
     reg = m[~m.playoff & m.result.isin(["W", "L", "T"])]
     margin = (reg.pts - reg.opp_pts).to_numpy(float)
@@ -126,7 +167,10 @@ def analyze_season(season):
     raw = picks_for(season)
     if not raw:
         return None
-    picks, flipped = fix_order(raw["picks"], season, n_teams)
+    names = dict(zip(daily.player_id, daily.name))
+    for p in raw["picks"]:
+        names.setdefault(p["playerId"], _logname(season, p["playerId"]))
+    picks, how = fix_order(raw["picks"], season, n_teams, names)
     rounds = max(p["round"] for p in picks)
     dates = dict(zip(t["calendar"].sp, t["calendar"].date))
     sp0, sp1 = int(daily.sp.min()), int(daily.sp.max())
@@ -136,7 +180,8 @@ def analyze_season(season):
     if repl is None or not ppw:
         return None
     tg = season_window_team_games(season, d0, d1)
-    names = dict(zip(daily.player_id, daily.name))
+    season_fp, rank = season_ranks(season, d0, d1)
+    cap = n_teams * rounds + REPL_BAND
     tname = dict(zip(teams.team_id, teams.name))
     st = stints(daily)
     played = daily[daily.gp > 0]
@@ -170,8 +215,12 @@ def analyze_season(season):
         pick_rows.append({"overall": p["overall"], "round": p["round"], "spot": p["spot"], "espn_overall": p["overallPickNumber"],
                           "team_id": int(team), "player_id": int(pid), "name": names.get(pid) or _logname(season, pid),
                           "gp": gp, "fp": round(fp, 1), "fpg": round(fp / gp, 1) if gp else None,
-                          "par": round(par, 1), "war": round(par / ppw, 2), "status": status, "left": when})
-    out = {"season": season, "teams": n_teams, "rounds": rounds, "reversal_fixed": flipped, "replacement": round(repl, 1),
+                          "par": round(par, 1), "war": round(par / ppw, 2), "status": status, "left": when,
+                          # played like: his whole season (any team), ranked by total fantasy points
+                          "season_fp": round(season_fp.get(pid, (0.0, 0))[0], 1), "season_gp": season_fp.get(pid, (0.0, 0))[1],
+                          "rank": rank.get(pid), "spots": p["overall"] - min(rank.get(pid, cap), cap),
+                          "hit": rank.get(pid, cap + 1) <= p["overall"]})
+    out = {"season": season, "teams": n_teams, "rounds": rounds, "reversal_fixed": how == "reversal", "order_source": how, "cap_rank": cap, "replacement": round(repl, 1),
            "points_per_win": round(ppw, 1), "window": [d0, d1], "team_games": tg, "complete": bool(t["complete"]),
            "order": [p["team_id"] for p in sorted(pick_rows, key=lambda r: r["overall"]) if p["round"] == 1],
            "picks": pick_rows, "team_names": {str(k): v for k, v in tname.items()},
@@ -235,14 +284,25 @@ def team_tables(s, fit):
     grades = []
     for tid in sorted({p["team_id"] for p in picks}):
         mine = [p for p in picks if p["team_id"] == tid]
-        grades.append({"team_id": tid, "par": round(sum(p["par"] for p in mine), 1),
+        groups = {"1-3": [1, 3], "4-7": [4, 7], "8+": [8, 99]}
+        grades.append({"spots": sum(p["spots"] for p in mine), "spots_per_pick": round(sum(p["spots"] for p in mine) / len(mine), 2),
+                       "hits": sum(p["hit"] for p in mine), "season_fp": round(sum(p["season_fp"] for p in mine), 1),
+                       "by_round": {k: sum(p["spots"] for p in mine if a <= p["round"] <= b) for k, (a, b) in groups.items()},
+                       "best_spots": max(mine, key=lambda p: p["spots"])["player_id"],
+                       "worst_spots": min(mine, key=lambda p: p["spots"])["player_id"],
+                       "team_id": tid, "par": round(sum(p["par"] for p in mine), 1),
                        "war": round(sum(p["war"] for p in mine), 2),
                        "vs_slot": round(sum(p["vs_slot"] for p in mine), 1),
                        "vs_slot_war": round(sum(p["vs_slot_war"] for p in mine), 2),
                        "best": max(mine, key=lambda p: p["vs_slot"])["player_id"],
                        "worst": min(mine, key=lambda p: p["vs_slot"])["player_id"],
                        "still": sum(p["status"] == "rostered" for p in mine), "picks": len(mine)})
-    grades.sort(key=lambda g: -g["war"])
+    # team totals read best against the league that year (injuries and breakout free agents pull every
+    # draft's raw total down)
+    avg = float(np.mean([g["spots"] for g in grades])) if grades else 0.0
+    for g in grades:
+        g["vs_avg"] = round(g["spots"] - avg)
+    grades.sort(key=lambda g: -g["spots"])
     for i, g in enumerate(grades):
         g["rank"] = i + 1
     s["grades"] = grades
@@ -258,6 +318,32 @@ def team_tables(s, fit):
     s["waivers"] = wv
 
 
+def letter(pct):
+    for cut, g in ((0.85, "A"), (0.60, "B"), (0.35, "C"), (0.15, "D")):
+        if pct >= cut:
+            lo, hi = cut, {"A": 1.0, "B": 0.85, "C": 0.60, "D": 0.35}[g]
+            third = (hi - lo) / 3
+            return g + ("+" if pct >= hi - third and g != "A" or (g == "A" and pct >= 0.95) else "-" if pct < lo + third else "")
+    return "F"
+
+
+def letter_grades(seasons):
+    """Grade = percentile of spots gained per pick among every team-draft on record."""
+    allv = sorted(g["spots_per_pick"] for s in seasons for g in s["grades"])
+    n = len(allv)
+    for s in seasons:
+        for g in s["grades"]:
+            below = sum(v < g["spots_per_pick"] for v in allv)
+            same = sum(v == g["spots_per_pick"] for v in allv)
+            pct = (below + 0.5 * same) / n
+            g["pct"] = round(pct, 3)
+            g["grade"] = letter(pct)
+        top = s["grades"][0]
+        best = next(p for p in s["picks"] if p["player_id"] == top["best_spots"] and p["team_id"] == top["team_id"])
+        s["headline"] = {"team_id": top["team_id"], "grade": top["grade"], "hits": top["hits"], "picks": top["picks"],
+                         "spots": top["spots"], "vs_avg": top["vs_avg"], "best": best["name"], "best_pick": best["overall"], "best_rank": best["rank"]}
+
+
 def build():
     seasons = []
     for season in cached_seasons():
@@ -271,6 +357,7 @@ def build():
     fit = fit_slot(seasons)
     for s in seasons:
         team_tables(s, fit)
+    letter_grades(seasons)
     OUT.write_text(json.dumps({"fit": fit, "seasons": {str(s["season"]): s for s in seasons}}, default=float,
                               separators=(",", ":")), encoding="utf-8")
     for s in seasons:

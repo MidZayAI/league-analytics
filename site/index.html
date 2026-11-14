@@ -1409,7 +1409,7 @@
           <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Draft &amp; waivers
             <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How value is measured">i</button><span class="pop" x-show="o" x-text="glossary.draft"></span></span></h1>
           <div class="text-[12px] text-muted mt-1" x-show="DR"
-               x-text="DR ? `Replacement level ${fmt.n(DR.replacement, 1)} FP/game · ${fmt.n(DR.points_per_win, 0)} pts = 1 win${DR.complete ? '' : ' · season so far'}${DR.reversal_fixed ? ' · pick numbers corrected for the third-round reversal' : ''}` : ''"></div>
+               x-text="DR ? [DR.complete ? '' : 'Season so far', DR.order_source === 'board' ? 'Pick order from the league’s draft board' : DR.order_source === 'reversal' ? 'Pick numbers corrected for the third-round reversal' : ''].filter(Boolean).join(' · ') : ''"></div>
         </div>
         <div class="flex gap-1.5">
           <button class="week-chip" :class="drTab === 'draft' && 'active'" @click="drTab = 'draft'">Draft</button>
@@ -1418,32 +1418,72 @@
       </div>
       <div class="card text-sm text-ink2" x-show="draftData && !DR">No draft data for this season.</div>
 
-      <!-- draft grades -->
+      <!-- draft: at a glance -->
       <div x-show="DR && drTab === 'draft'" class="space-y-4">
-        <div class="card !p-0 overflow-x-auto">
-          <table class="tbl w-full">
-            <thead><tr><th>#</th><th>Team</th><th class="num">Draft WAR</th><th class="num">vs slot</th><th class="num">PAR</th><th>Best pick</th><th>Biggest miss</th><th class="num">Kept</th></tr></thead>
-            <tbody>
-              <template x-for="g in DR?.grades || []" :key="g.team_id">
-                <tr>
-                  <td x-text="g.rank"></td>
-                  <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(g.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(g.team_id)"></span></div></td>
-                  <td class="num font-bold" x-text="fmt.signed(g.war, 1)"></td>
-                  <td class="num" :class="g.vs_slot_war > 0 ? 'up' : 'down'" x-text="fmt.signed(g.vs_slot_war, 1)"></td>
-                  <td class="num text-ink2" x-text="fmt.n(g.par, 0)"></td>
-                  <td class="text-[12px]" x-text="drPick(g.best) ? `${drPick(g.best).name} (${drPick(g.best).round}.${drPick(g.best).spot})` : ''"></td>
-                  <td class="text-[12px]" x-text="drPick(g.worst) ? `${drPick(g.worst).name} (${drPick(g.worst).round}.${drPick(g.worst).spot})` : ''"></td>
-                  <td class="num text-ink2" x-text="`${g.still}/${g.picks}`"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+        <template x-if="DR?.headline">
+          <div class="card">
+            <div class="label" x-text="DR.complete ? 'Best draft' : 'Best draft so far'"></div>
+            <div class="flex items-center gap-3 mt-1">
+              <img class="logo w-12 h-12" :src="logoOf(DR.headline.team_id)" alt="" @error="$el.src = silhouette">
+              <div class="min-w-0">
+                <div class="text-xl font-extrabold tracking-tight" x-text="`${drName(DR.headline.team_id)} · ${DR.headline.grade}`"></div>
+                <div class="text-[13px] text-ink2" x-text="`${DR.headline.hits} of ${DR.headline.picks} picks ${DR.complete ? 'outperformed' : 'are outperforming'} their draft spot · best pick ${DR.headline.best}, taken #${DR.headline.best_pick}, ${DR.complete ? 'finished' : 'playing like'} #${DR.headline.best_rank}`"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- grade cards -->
+        <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <template x-for="g in DR?.grades || []" :key="g.team_id">
+            <div class="card !p-4">
+              <div class="flex items-center gap-2">
+                <img class="logo w-8 h-8" :src="logoOf(g.team_id)" alt="" @error="$el.src = silhouette">
+                <span class="font-bold truncate flex-1" x-text="drName(g.team_id)"></span>
+                <span class="text-2xl font-extrabold" :style="`color: ${drGradeColor(g.grade)}`" x-text="g.grade"></span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mt-3 text-center">
+                <div class="rounded-lg py-1.5" style="background: var(--wash)"><div class="label">Hits</div><div class="font-bold" x-text="`${g.hits} / ${g.picks}`"></div></div>
+                <div class="rounded-lg py-1.5" style="background: var(--wash)"><div class="label">vs league</div><div class="font-bold" :class="g.vs_avg > 0 ? 'up' : g.vs_avg < 0 ? 'down' : ''" x-text="`${fmt.signed(g.vs_avg, 0)} spots`"></div></div>
+              </div>
+              <div class="text-[12px] mt-2.5 space-y-0.5">
+                <div class="truncate" x-text="drPickLine('Best', g.best_spots, g.team_id)"></div>
+                <div class="truncate text-ink2" x-text="drPickLine('Miss', g.worst_spots, g.team_id)"></div>
+              </div>
+            </div>
+          </template>
         </div>
 
+        <!-- steals & busts -->
+        <div class="grid md:grid-cols-2 gap-3">
+          <template x-for="col in [['Biggest steals', drSteals, 'up'], ['Biggest busts', drBusts, 'down']]" :key="col[0]">
+            <div class="card">
+              <h3 class="mb-2" x-text="col[0]"></h3>
+              <template x-for="p in col[1]" :key="p.player_id">
+                <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                  <img class="hs w-9 h-9" :src="headshot(p.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-semibold truncate" x-text="p.name"></div>
+                    <div class="text-[11px] text-muted truncate" x-text="[drName(p.team_id), `picked #${p.overall} (${p.round}.${p.spot})`, p.rank ? `${DR.complete ? 'finished' : 'playing like'} #${p.rank}` : 'barely played', drStatus(p)].filter(Boolean).join(' · ')"></div>
+                  </div>
+                  <span class="font-extrabold text-[14px] shrink-0" :class="col[2]" x-text="fmt.signed(p.spots, 0)"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- team chart -->
+        <div class="card">
+          <div class="font-medium text-sm mb-0.5">Spots gained vs the league, by round</div>
+          <div class="sub mb-1">How far each team's picks out- or under-performed where they were taken, compared with the league average.</div>
+          <div class="chart h-72" x-chart="drChart()"></div>
+        </div>
+
+        <!-- pick board -->
         <div class="card">
           <h3 class="mb-0.5">Pick board</h3>
-          <div class="sub mb-3">Each pick's wins above replacement while on the drafting team. Blue = beat what that draft slot usually delivers, red = fell short. Tap a pick for details.</div>
-          <!-- desktop grid -->
+          <div class="sub mb-3" x-text="`Each pick: where he ${DR?.complete ? 'finished' : 'ranks so far'} among all players by total fantasy points, and spots gained vs his draft spot. Blue = steal, red = bust. Tap for details.`"></div>
           <div class="hidden md:block overflow-x-auto">
             <table class="w-full text-[11.5px] border-separate" style="border-spacing: 3px">
               <thead><tr>
@@ -1461,7 +1501,7 @@
                         <template x-if="p">
                           <div>
                             <div class="flex items-center gap-1"><span class="text-muted" x-text="`${p.round}.${p.spot}`"></span><span class="font-semibold truncate" x-text="drLast(p.name)"></span></div>
-                            <div class="flex justify-between gap-1"><span x-text="fmt.signed(p.war, 1)"></span><span class="text-muted" x-text="p.status === 'rostered' ? '' : p.status === 'traded' ? 'T' : p.status === 'dropped' ? 'D' : '–'"></span></div>
+                            <div class="flex justify-between gap-1"><span x-text="p.rank && p.rank <= DR.cap_rank ? `#${p.rank}` : 'repl.'"></span><span class="font-semibold" x-text="fmt.signed(p.spots, 0)"></span></div>
                           </div>
                         </template>
                       </td>
@@ -1471,7 +1511,6 @@
               </tbody>
             </table>
           </div>
-          <!-- phone: by round -->
           <div class="md:hidden space-y-3">
             <template x-for="rd in drRounds" :key="rd.r">
               <div>
@@ -1481,8 +1520,8 @@
                     <span class="text-muted w-9 shrink-0" x-text="`${p.round}.${p.spot}`"></span>
                     <img class="hs w-7 h-7" :src="headshot(p.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
                     <span class="truncate flex-1" x-text="p.name"></span>
-                    <span class="text-muted truncate max-w-[90px]" x-text="drName(p.team_id)"></span>
-                    <span class="font-semibold w-10 text-right" x-text="fmt.signed(p.war, 1)"></span>
+                    <span class="text-muted shrink-0" x-text="p.rank && p.rank <= DR.cap_rank ? `#${p.rank}` : 'repl.'"></span>
+                    <span class="font-semibold w-10 text-right" x-text="fmt.signed(p.spots, 0)"></span>
                   </button>
                 </template>
               </div>
@@ -1492,14 +1531,37 @@
             <div class="mt-3 rounded-xl p-3 flex items-center gap-3" style="background: var(--wash)">
               <img class="hs w-12 h-12" :src="headshot(drOpen.player_id)" alt="" @error="$el.src = silhouette">
               <div class="min-w-0 flex-1 text-[12.5px]">
-                <div class="font-bold text-[14px]" x-text="`${drOpen.name} · pick ${drOpen.round}.${drOpen.spot} (#${drOpen.overall})`"></div>
-                <div class="text-ink2" x-text="`${drName(drOpen.team_id)} · ${drOpen.gp} games, ${drOpen.fpg != null ? fmt.n(drOpen.fpg, 1) : '–'} FP/game while on the team${drStatus(drOpen) ? ' · ' + drStatus(drOpen) : ''}`"></div>
-                <div class="text-ink2" x-text="`${fmt.signed(drOpen.par, 0)} pts above replacement = ${fmt.signed(drOpen.war, 2)} WAR · this slot usually delivers ${fmt.n(drOpen.expected_par, 0)} → ${fmt.signed(drOpen.vs_slot_war, 2)} WAR vs slot`"></div>
-                <div class="text-muted" x-show="DR.reversal_fixed && drOpen.espn_overall !== drOpen.overall" x-text="`ESPN lists this as pick #${drOpen.espn_overall}`"></div>
+                <div class="font-bold text-[14px]" x-text="`${drOpen.name} · pick ${drOpen.round}.${drOpen.spot} (#${drOpen.overall}) · ${drName(drOpen.team_id)}`"></div>
+                <div class="text-ink2" x-text="`${DR.complete ? 'Finished' : 'Playing like'} #${drOpen.rank || '–'} by total fantasy points: ${fmt.n(drOpen.season_fp, 0)} pts in ${drOpen.season_gp} games (${drOpen.season_gp ? fmt.n(drOpen.season_fp / drOpen.season_gp, 1) : '–'}/game) · ${fmt.signed(drOpen.spots, 0)} spots vs his draft spot`"></div>
+                <div class="text-ink2" x-text="`For ${drName(drOpen.team_id)}: ${drOpen.gp} games, ${fmt.signed(drOpen.war, 2)} WAR${drStatus(drOpen) ? ' · ' + drStatus(drOpen) : ''}`"></div>
+                <div class="text-muted" x-show="drOpen.espn_overall !== drOpen.overall" x-text="`ESPN lists this as pick #${drOpen.espn_overall}`"></div>
               </div>
               <button class="week-chip" @click="drOpen = null">Close</button>
             </div>
           </template>
+        </div>
+
+        <!-- details: WAR -->
+        <div x-data="{ more: false }">
+          <button class="week-chip" @click="more = !more" x-text="more ? 'Hide WAR details' : 'Show WAR details'"></button>
+          <div class="card !p-0 overflow-x-auto mt-3" x-show="more">
+            <table class="tbl w-full">
+              <thead><tr><th>Team</th><th class="num">Draft WAR</th><th class="num">vs slot</th><th class="num">PAR</th><th>Best by WAR</th><th class="num">Kept</th></tr></thead>
+              <tbody>
+                <template x-for="g in (DR?.grades || []).slice().sort((a, b) => b.war - a.war)" :key="g.team_id">
+                  <tr>
+                    <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(g.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(g.team_id)"></span></div></td>
+                    <td class="num font-bold" x-text="fmt.signed(g.war, 1)"></td>
+                    <td class="num" :class="g.vs_slot_war > 0 ? 'up' : 'down'" x-text="fmt.signed(g.vs_slot_war, 1)"></td>
+                    <td class="num text-ink2" x-text="fmt.n(g.par, 0)"></td>
+                    <td class="text-[12px]" x-text="drPick(g.best, g.team_id)?.name || ''"></td>
+                    <td class="num text-ink2" x-text="`${g.still}/${g.picks}`"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <div class="text-[11px] text-muted p-3">WAR = points above a replacement-level player while on the drafting team, turned into wins. Credit stops at a trade or drop.</div>
+          </div>
         </div>
       </div>
 
@@ -2261,7 +2323,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=a16b9863ea"></script>
+<script src="js/core.js?v=fe3751a934"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2271,7 +2333,7 @@
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=8b8ed40393"></script>
-<script src="js/draft.js?v=e770f09cd4"></script>
+<script src="js/draft.js?v=ad2a8267db"></script>
 <script src="js/app.js?v=72d19db3fd"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
