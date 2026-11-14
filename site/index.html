@@ -1401,6 +1401,144 @@
       </template>
     </section>
 
+    <!-- ============ DRAFT & WAIVERS ============ -->
+    <section x-show="page === 'draft'" class="space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <div class="label" x-text="fmt.seasonLabel(season)"></div>
+          <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Draft &amp; waivers
+            <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How value is measured">i</button><span class="pop" x-show="o" x-text="glossary.draft"></span></span></h1>
+          <div class="text-[12px] text-muted mt-1" x-show="DR"
+               x-text="DR ? `Replacement level ${fmt.n(DR.replacement, 1)} FP/game · ${fmt.n(DR.points_per_win, 0)} pts = 1 win${DR.complete ? '' : ' · season so far'}${DR.reversal_fixed ? ' · pick numbers corrected for the third-round reversal' : ''}` : ''"></div>
+        </div>
+        <div class="flex gap-1.5">
+          <button class="week-chip" :class="drTab === 'draft' && 'active'" @click="drTab = 'draft'">Draft</button>
+          <button class="week-chip" :class="drTab === 'waivers' && 'active'" @click="drTab = 'waivers'">Waiver wire</button>
+        </div>
+      </div>
+      <div class="card text-sm text-ink2" x-show="draftData && !DR">No draft data for this season.</div>
+
+      <!-- draft grades -->
+      <div x-show="DR && drTab === 'draft'" class="space-y-4">
+        <div class="card !p-0 overflow-x-auto">
+          <table class="tbl w-full">
+            <thead><tr><th>#</th><th>Team</th><th class="num">Draft WAR</th><th class="num">vs slot</th><th class="num">PAR</th><th>Best pick</th><th>Biggest miss</th><th class="num">Kept</th></tr></thead>
+            <tbody>
+              <template x-for="g in DR?.grades || []" :key="g.team_id">
+                <tr>
+                  <td x-text="g.rank"></td>
+                  <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(g.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(g.team_id)"></span></div></td>
+                  <td class="num font-bold" x-text="fmt.signed(g.war, 1)"></td>
+                  <td class="num" :class="g.vs_slot_war > 0 ? 'up' : 'down'" x-text="fmt.signed(g.vs_slot_war, 1)"></td>
+                  <td class="num text-ink2" x-text="fmt.n(g.par, 0)"></td>
+                  <td class="text-[12px]" x-text="drPick(g.best) ? `${drPick(g.best).name} (${drPick(g.best).round}.${drPick(g.best).spot})` : ''"></td>
+                  <td class="text-[12px]" x-text="drPick(g.worst) ? `${drPick(g.worst).name} (${drPick(g.worst).round}.${drPick(g.worst).spot})` : ''"></td>
+                  <td class="num text-ink2" x-text="`${g.still}/${g.picks}`"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3 class="mb-0.5">Pick board</h3>
+          <div class="sub mb-3">Each pick's wins above replacement while on the drafting team. Blue = beat what that draft slot usually delivers, red = fell short. Tap a pick for details.</div>
+          <!-- desktop grid -->
+          <div class="hidden md:block overflow-x-auto">
+            <table class="w-full text-[11.5px] border-separate" style="border-spacing: 3px">
+              <thead><tr>
+                <th class="text-left text-muted font-semibold w-8">Rd</th>
+                <template x-for="tid in DR?.order || []" :key="tid">
+                  <th class="font-semibold"><div class="flex flex-col items-center gap-1"><img class="logo w-6 h-6" :src="logoOf(tid)" alt="" @error="$el.src = silhouette"><span class="truncate max-w-[90px]" x-text="drName(tid)"></span></div></th>
+                </template>
+              </tr></thead>
+              <tbody>
+                <template x-for="row in drBoard" :key="row.r">
+                  <tr>
+                    <td class="text-muted font-semibold" x-text="row.r"></td>
+                    <template x-for="(p, ci) in row.cells" :key="ci">
+                      <td class="rounded-md p-1.5 align-top cursor-pointer" :style="drCell(p)" @click="drOpen = p">
+                        <template x-if="p">
+                          <div>
+                            <div class="flex items-center gap-1"><span class="text-muted" x-text="`${p.round}.${p.spot}`"></span><span class="font-semibold truncate" x-text="drLast(p.name)"></span></div>
+                            <div class="flex justify-between gap-1"><span x-text="fmt.signed(p.war, 1)"></span><span class="text-muted" x-text="p.status === 'rostered' ? '' : p.status === 'traded' ? 'T' : p.status === 'dropped' ? 'D' : '–'"></span></div>
+                          </div>
+                        </template>
+                      </td>
+                    </template>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <!-- phone: by round -->
+          <div class="md:hidden space-y-3">
+            <template x-for="rd in drRounds" :key="rd.r">
+              <div>
+                <div class="label mb-1" x-text="`Round ${rd.r}`"></div>
+                <template x-for="p in rd.picks" :key="p.overall">
+                  <button class="w-full flex items-center gap-2 py-1 px-2 rounded-md text-left text-[12.5px]" :style="drCell(p)" @click="drOpen = p">
+                    <span class="text-muted w-9 shrink-0" x-text="`${p.round}.${p.spot}`"></span>
+                    <img class="hs w-7 h-7" :src="headshot(p.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                    <span class="truncate flex-1" x-text="p.name"></span>
+                    <span class="text-muted truncate max-w-[90px]" x-text="drName(p.team_id)"></span>
+                    <span class="font-semibold w-10 text-right" x-text="fmt.signed(p.war, 1)"></span>
+                  </button>
+                </template>
+              </div>
+            </template>
+          </div>
+          <template x-if="drOpen">
+            <div class="mt-3 rounded-xl p-3 flex items-center gap-3" style="background: var(--wash)">
+              <img class="hs w-12 h-12" :src="headshot(drOpen.player_id)" alt="" @error="$el.src = silhouette">
+              <div class="min-w-0 flex-1 text-[12.5px]">
+                <div class="font-bold text-[14px]" x-text="`${drOpen.name} · pick ${drOpen.round}.${drOpen.spot} (#${drOpen.overall})`"></div>
+                <div class="text-ink2" x-text="`${drName(drOpen.team_id)} · ${drOpen.gp} games, ${drOpen.fpg != null ? fmt.n(drOpen.fpg, 1) : '–'} FP/game while on the team${drStatus(drOpen) ? ' · ' + drStatus(drOpen) : ''}`"></div>
+                <div class="text-ink2" x-text="`${fmt.signed(drOpen.par, 0)} pts above replacement = ${fmt.signed(drOpen.war, 2)} WAR · this slot usually delivers ${fmt.n(drOpen.expected_par, 0)} → ${fmt.signed(drOpen.vs_slot_war, 2)} WAR vs slot`"></div>
+                <div class="text-muted" x-show="DR.reversal_fixed && drOpen.espn_overall !== drOpen.overall" x-text="`ESPN lists this as pick #${drOpen.espn_overall}`"></div>
+              </div>
+              <button class="week-chip" @click="drOpen = null">Close</button>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- waiver wire value -->
+      <div x-show="DR && drTab === 'waivers'" class="space-y-4">
+        <div class="card !p-0 overflow-x-auto">
+          <table class="tbl w-full">
+            <thead><tr><th>#</th><th>Team</th><th class="num">Waiver WAR</th><th class="num">PAR</th><th class="num">Pickups</th><th>Best pickup</th></tr></thead>
+            <tbody>
+              <template x-for="w in DR?.waivers || []" :key="w.team_id">
+                <tr>
+                  <td x-text="w.rank"></td>
+                  <td><div class="flex items-center gap-2 min-w-0"><img class="logo w-6 h-6" :src="logoOf(w.team_id)" alt="" @error="$el.src = silhouette"><span class="truncate font-medium" x-text="drName(w.team_id)"></span></div></td>
+                  <td class="num font-bold" :class="w.war > 0 ? 'up' : w.war < 0 ? 'down' : ''" x-text="fmt.signed(w.war, 1)"></td>
+                  <td class="num text-ink2" x-text="fmt.n(w.par, 0)"></td>
+                  <td class="num text-ink2" x-text="w.adds"></td>
+                  <td class="text-[12px]" x-text="w.best && drAdd(w.best, w.team_id) ? `${drAdd(w.best, w.team_id).name} (${fmt.signed(drAdd(w.best, w.team_id).war, 1)})` : ''"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3 class="mb-0.5">Best pickups</h3>
+          <div class="sub mb-2">Points that counted in the lineup while on the roster, above what a replacement player would have given in those games.</div>
+          <template x-for="a in drTopAdds" :key="a.player_id + '-' + a.team_id + '-' + a.added">
+            <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+              <img class="hs w-8 h-8" :src="headshot(a.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+              <div class="min-w-0 flex-1">
+                <div class="text-[13px] font-medium truncate" x-text="a.name"></div>
+                <div class="text-[10.5px] text-muted truncate" x-text="`${drName(a.team_id)} · added ${fmt.date(a.added)}${a.dropped ? ', dropped ' + fmt.date(a.dropped) : ''} · ${a.counted_gp} counted games, ${fmt.n(a.counted_fp, 0)} pts`"></div>
+              </div>
+              <div class="text-right shrink-0"><div class="font-bold" x-text="fmt.signed(a.war, 2)"></div><div class="text-[10px] text-muted" x-text="`${fmt.signed(a.par, 0)} PAR`"></div></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ LEAGUE TABLE ============ -->
     <!-- ============ PLAYOFF ODDS ============ -->
     <section x-show="section === 'league' && page === 'odds'" class="space-y-3">
@@ -2123,7 +2261,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=fc51aa2c0e"></script>
+<script src="js/core.js?v=a16b9863ea"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2133,7 +2271,8 @@
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=8b8ed40393"></script>
-<script src="js/app.js?v=c1e4db2253"></script>
+<script src="js/draft.js?v=e770f09cd4"></script>
+<script src="js/app.js?v=72d19db3fd"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>

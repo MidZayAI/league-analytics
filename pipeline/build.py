@@ -219,6 +219,11 @@ def main():
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
     write_odds_history()
+    try:  # draft & waiver value (WAR-style); never fails the refresh
+        import draft
+        draft.build()
+    except Exception as e:
+        print(f"draft step skipped: {e}")
     stamp_assets()
     print(f"wrote {len(seasons) + 2} files to {SITE_DATA}")
 

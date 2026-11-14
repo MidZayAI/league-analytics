@@ -17,6 +17,7 @@ const GLOSSARY = {
   waivers: 'Waiver wire: free agents ranked by projected fantasy points per game he plays (the games cap makes per-game quality what counts), in this league’s ESPN points scoring, over his games still to come this week and next. Each game = half our model — ESPN’s projection pulled toward his actual season and last 15 days — and half Sleeper’s projection for that specific game, re-scored with this league’s settings + any boost from an injured teammate. Injured players likely to miss most games are listed separately as stashes. “Compare with my team” shows the per-game gain over your weakest healthy player.',
   today: 'Today: free agents ranked only by DraftKings player props for today’s game (points, rebounds, assists, steals, blocks, threes), turned into fantasy points with this league’s scoring. Books re-price within hours of injury news or role changes, so this reacts faster than any season-average model. Turnovers and shooting aren’t priced, so they come from Sleeper’s projection for the game, scaled to the points line. “Since open” = how much the line-implied points moved since the line first came out. Pick your team for a start/sit list of your own players today.',
   longterm: 'Long-term: FP per game = FP per minute × minutes, projected separately and learned from five seasons of NBA game logs. Temporary bumps (a star teammate out short-term, hot streaks) are stripped out; ramp-ups, rookie growth and teammates out long-term are built in. Upside is calibrated so about 1 in 4 similar players reached it. Backtested on 2024-25 and 2025-26: rest-of-season error ~5.0 FP/g vs ~6-7 for season average.',
+  draft: 'Draft & waivers: value above replacement, like WAR. Replacement level = what the players just outside the league\u2019s rostered pool averaged per game over the same dates (about the best free agent you could have grabbed). Draft: every game a pick played while on the drafting team, minus replacement; credit stops if he\u2019s traded or dropped. Waivers: only games that counted in the lineup. Points are turned into wins with how many extra points a week win one more matchup in this league. \u201cvs slot\u201d compares each pick with what that draft position usually delivers (fit on past seasons). 2025-26 and 2026-27 pick numbers are corrected for the third-round reversal.',
   trades: 'Trade analyzer: real trades are found on ESPN (accepted, in review or processed) and measured exactly: the rest of the season is simulated with rosters before vs after, using the same random numbers, so the change in playoff and title odds is the trade alone. Value is cap-aware: with a weekly games cap, two good players can be worth less than one great one because they compete for the same cap games. Players are valued at their rest-of-season FP/g (temporary bumps removed). The builder estimates any what-if instantly from the same numbers.',
   lineup: 'Best lineup: every remaining game this week is worth (chance he plays × projected points), using the same per-game projection as the waiver wire and win odds. An exact solver picks which games to start: each starter fills one slot he’s eligible for (PG, SG, SF, PF, C, G, F, 3 UTIL), and total starts never exceed the games left under this week’s cap. It saves cap games for better days instead of starting everyone early. The pickup is the free agent whose add (dropping one of your weakest healthy players) raises this plan the most.',
   projblend: 'Per-game projection: our model (Sleeper’s daily projection as the starting point, pulled toward his actual season and last 15 days), Sleeper’s projection for that game, and DraftKings player props when posted (points, rebounds, assists, steals, blocks, threes, turned into fantasy points with this league’s scoring). The weights are re-fit as games are graded.',
@@ -41,6 +42,7 @@ const SECTIONS = [
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
   { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' }, { id: 'odds', label: 'Playoff odds' },
+  { id: 'draft', label: 'Draft & waivers' },
 ];
 const OLD_PAGES = { week: 'matchups', standings: 'league/standings', luck: 'league/luck', expected: 'league/expected',
                     coaching: 'league/coaching', cap: 'league/cap', franchises: 'history' };
@@ -136,6 +138,7 @@ window.Core = {
       this.section = 'league';
       this.page = LEAGUE_VIEWS.some((v) => v.id === a) ? a : 'standings';
       if (this.page === 'cap') this.loadAll();
+      if (this.page === 'draft') this.loadDraft();
     } else if (sec === 'trades') {
       Object.assign(this, { section: 'teams', page: 'trades' });
     } else if (sec === 'teams') {

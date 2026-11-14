@@ -1,0 +1,4 @@
+{
+  "_about": "Seasons whose offline draft used a third-round reversal (round 3 repeats round 2's order, then it snakes). ESPN records plain snake pick numbers for offline drafts, so these seasons' pick numbers are corrected for rounds 3+. Team/player assignments are unaffected.",
+  "third_round_reversal": [2026, 2027]
+}
