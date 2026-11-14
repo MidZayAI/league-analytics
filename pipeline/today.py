@@ -95,6 +95,7 @@ def build(proj, pool, abbrev, roster, t, sp_now, starts, now, rem_caps, team_out
 
     OUT.write_text(json.dumps({"updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "date": day,
                                "lines": sum(1 for g in props.values() if day in g),
+                               "lines_at": datetime.fromtimestamp(market.fetched_at() or 0, timezone.utc).isoformat(timespec="seconds"),
                                "free": free[:60], "moved": [r for r in free if r["alert"]][:12], "teams": teams},
                               default=float, separators=(",", ":")), encoding="utf-8")
     print(f"today: {len(free)} free agents with lines, {sum(r['alert'] for r in free)} moved; top: "

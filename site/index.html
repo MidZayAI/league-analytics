@@ -413,7 +413,7 @@
               </div>
           </template>
         </div>
-        <div class="text-[11.5px] text-muted" x-show="today">Betting lines only: no season averages, no model. Books post props about a day ahead and mainly for rotation players, so deep bench players won't show here. Updated <span x-text="today ? ago(today.updated_at) : ''"></span>.</div>
+        <div class="text-[11.5px] text-muted" x-show="today">Betting lines only: no season averages, no model. Books post props about a day ahead and mainly for rotation players, so deep bench players won't show here. Lines checked <span x-text="today ? ago(today.lines_at || today.updated_at) : ''"></span>.</div>
       </div>
 
       <!-- long-term: rest-of-season FP/g, upside range, why -->

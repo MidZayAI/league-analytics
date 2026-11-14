@@ -29,7 +29,7 @@ from espn_client import ROOT  # noqa: E402
 
 CURRENT = int(os.environ.get("SEASON", 2027))
 CACHE = ROOT / "data" / "tidy" / f"props_v2_{CURRENT}.json"  # bump when the stored shape changes
-TTL = 3600
+TTL = 300  # lines move within minutes of injury news: re-fetch on every refresh, reuse only within one run
 SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
 PROPS = ("https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/{e}/competitions/{e}"
          "/odds/100/propBets")
@@ -94,6 +94,13 @@ def _erfinv(y):
     for _ in range(2):
         x -= (math.erf(x) - y) / (2 / math.sqrt(math.pi) * math.exp(-x * x))
     return x
+
+
+def fetched_at():
+    """When the cached lines were pulled (epoch seconds), or None."""
+    if CACHE.exists():
+        return json.loads(CACHE.read_text(encoding="utf-8")).get("_fetched")
+    return None
 
 
 def fetch_props(dates, force=False):
