@@ -5,7 +5,7 @@ the backtest grades (pipeline/backtest.py): scores so far, games used against th
 rosters and each player's history up to then, nothing later. Each line ends at the real result.
 This season's finished and live weeks also carry the live snapshots (every refresh) for the charts.
 
-Per matchup: Saturday win chance (start of the matchup's last Saturday), the winner's lowest point,
+Per matchup: Sunday-morning win chance (start of the matchup's final day), a drama score, the winner's lowest point,
 the biggest one-day move, lead changes, and per day a "why it swung" line for each side (best and
 worst counted game vs that morning's expectation, regulars who sat).
 
@@ -30,7 +30,8 @@ OUT = ROOT / "site" / "data" / "swings.json"
 SIMS = 3000
 VERSION = 2
 IR_SLOT = 13
-FLIP_BAND = 0.02          # a lead change has to cross 50% by more than this
+FLIP_BAND = 0.02
+SHRINK = 8                # clutch grade: matchups of "average" added to every team's record          # a lead change has to cross 50% by more than this
 COMEBACK, BLOWN = 0.35, 0.65
 TOP = 15
 
@@ -123,15 +124,17 @@ def season_series(season, tables, model, params, upto=None):
 
 
 def summarize(mu):
-    """Saturday chance, lowest point, biggest move and lead changes for one matchup (home's view)."""
+    """Sunday-morning chance, drama ingredients, lead changes and key moments for one matchup (home's view)."""
     s = mu["series"]
     ps = [x["p"] for x in s]
-    days = [date.fromisoformat(x["d"]) for x in s if not x.get("final")]
-    sat = [i for i, d in enumerate(days) if d.weekday() == 5]
-    mu["sat_i"] = sat[-1] if sat else max(0, len(days) - 2)
-    mu["sat_p"] = ps[mu["sat_i"]] if mu["result"] else None
+    pre = [x["p"] for x in s if not x.get("final")]
+    # Sunday morning = the start of the matchup's final day (every matchup period ends on a Sunday)
+    sun = [i for i, x in enumerate(s) if x["d"] == mu["end"] and not x.get("final")]
+    mu["sun_i"] = sun[0] if sun else None
+    mu["sun_p"] = ps[mu["sun_i"]] if sun and mu["result"] else None
     mu["swing"] = round(max(ps) - min(ps), 4)
     moves = [(ps[i + 1] - ps[i], i) for i in range(len(ps) - 1)]
+    mu["total_move"] = round(sum(abs(d) for d, _ in moves), 4)
     big = max(moves, key=lambda x: abs(x[0])) if moves else (0.0, 0)
     mu["move"], mu["move_i"] = round(big[0], 4), big[1]
     side, flips = None, 0
@@ -145,22 +148,42 @@ def summarize(mu):
         home_won = mu["result"] == "W"
         mu["winner"] = mu["home"] if home_won else mu["away"]
         mu["loser"] = mu["away"] if home_won else mu["home"]
-        pre = ps[:-1]  # before the final result
-        mu["winner_sat"] = round(mu["sat_p"] if home_won else 1 - mu["sat_p"], 4)
-        mu["winner_low"] = round(min(pre) if home_won else 1 - max(pre), 4)
+        if mu["sun_p"] is not None:
+            mu["winner_sun"] = round(mu["sun_p"] if home_won else 1 - mu["sun_p"], 4)
+        mu["winner_min"] = round(min(pre) if home_won else 1 - max(pre), 4)
         mu["margin"] = abs(mu["home_pts"] - mu["away_pts"])
+        # the winner's best counted game on the final day (Mr. Clutch candidates)
+        last = s[mu["sun_i"]] if mu["sun_i"] is not None else None
+        why = (last or {}).get("why") or [None, None]
+        w = why[0 if home_won else 1]
+        if w and w.get("top"):
+            mu["sunday_hero"] = w["top"]
+    # raw drama: how much it moved, how close it was going into Sunday, how often the lead flipped
+    close = 1 - 2 * abs(mu["sun_p"] - 0.5) if mu["sun_p"] is not None else 0.0
+    mu["_drama"] = 0.4 * min(1.0, mu["total_move"] / 2) + 0.3 * close + 0.3 * min(flips, 3) / 3
     return mu
 
 
+def drama_pct(ms):
+    """Drama 0-100: percentile of the raw drama score among every finished matchup on record."""
+    ref = sorted(m["_drama"] for m in ms if m["result"])
+    n = len(ref) or 1
+    for m in ms:
+        v = m.pop("_drama")
+        below = sum(x < v for x in ref)
+        same = sum(x == v for x in ref)
+        m["drama"] = round(100 * (below + 0.5 * same) / n)
+
+
 def clutch_table(ms, owner_of):
-    """Per franchise (owner): wins above what the Saturday chances expected, comeback wins, blown leads.
+    """Per franchise (owner): wins above what the Sunday-morning chances expected, comeback wins, blown leads.
     owner_of[(season, team_id)] -> owner; team ids get reused when a team changes hands."""
     rows = {}
     for m in ms:
-        if m["sat_p"] is None:
+        if m["sun_p"] is None:
             continue
         y = {"W": 1.0, "L": 0.0, "T": 0.5}[m["result"]]
-        for tid, p, r in ((m["home"], m["sat_p"], y), (m["away"], 1 - m["sat_p"], 1 - y)):
+        for tid, p, r in ((m["home"], m["sun_p"], y), (m["away"], 1 - m["sun_p"], 1 - y)):
             own = owner_of.get((m["season"], tid), f"{m['season']}-{tid}")
             t = rows.setdefault(own, {"owner": own, "team_id": tid, "season": m["season"], "n": 0, "clutch": 0.0,
                                       "comebacks": 0, "blown": 0, "wins": 0.0, "exp": 0.0})
@@ -174,8 +197,21 @@ def clutch_table(ms, owner_of):
             t["blown"] += int(p > BLOWN and r == 0)
     out = sorted(rows.values(), key=lambda t: -t["clutch"])
     for t in out:
+        # per matchup, shrunk toward 0 so a few weeks can't earn an A+ or F on luck alone
+        t["rate"] = round(t["clutch"] / (t["n"] + SHRINK), 4)
         t["clutch"], t["exp"] = round(t["clutch"], 2), round(t["exp"], 2)
     return out
+
+
+def grade_rows(rows, ref):
+    """Letter grade from the percentile of wins-above-odds per matchup among `ref` rates."""
+    from draft import letter
+    n = len(ref) or 1
+    for t in rows:
+        below = sum(v < t["rate"] for v in ref)
+        same = sum(v == t["rate"] for v in ref)
+        t["pct"] = round((below + 0.5 * same) / n, 3)
+        t["grade"] = letter(t["pct"])
 
 
 def attach_live(ms, season):
@@ -222,13 +258,23 @@ def build(rebuild=False):
         print(f"  swings {s}: {len(ms)} matchups")
     attach_live([m for m in all_ms if m["season"] == current], current)
     all_ms = [summarize(m) for m in all_ms]
+    drama_pct(all_ms)
     names = {str(s): {str(k): v for k, v in zip(t["teams"].team_id, t["teams"]["name"])} for s, t in tables.items()}
     owner_of = {(s, int(k)): v for s, t in tables.items() for k, v in zip(t["teams"].team_id, t["teams"].owner_id)}
     owners = {str(s): {str(k): v for k, v in zip(t["teams"].team_id, t["teams"].owner_id)} for s, t in tables.items()}
     per_season = {str(s): clutch_table([m for m in all_ms if m["season"] == s], owner_of) for s in seasons}
+    # team-season grades vs every team-season on record (min 5 matchups); all-time vs the franchises
+    ref = [t["rate"] for s_, rows in per_season.items() for t in rows if int(s_) != current or tables[current]["complete"]]
+    for rows in per_season.values():
+        grade_rows(rows, ref)
+    alltime = clutch_table(all_ms, owner_of)
+    grade_rows(alltime, [t["rate"] for t in alltime])
+    for t in alltime:  # a franchise with a handful of matchups (new owner) isn't graded all-time
+        if t["n"] < 20:
+            t["grade"] = None
     out = {"seasons": seasons, "current": current, "team_names": names, "owners": owners,
            "matchups": all_ms,
-           "clutch": clutch_table(all_ms, owner_of), "clutch_by_season": per_season,
+           "clutch": alltime, "clutch_by_season": per_season,
            "thresholds": {"comeback": COMEBACK, "blown": BLOWN, "flip_band": FLIP_BAND}}
     OUT.write_text(json.dumps(out, separators=(",", ":"), default=float), encoding="utf-8")
     return out
