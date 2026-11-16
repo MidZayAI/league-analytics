@@ -13,6 +13,7 @@ const GLOSSARY = {
   breakdown: 'Pregame expected → availability (who played) → roster moves → lineup & cap → breakouts (season level vs. expectation) → hot/cold (week-to-week swings). Always adds up to the real score.',
   sofar: 'The same breakdown for the days played so far this week.',
   odds: '10,000 simulations of the rest of the season: every remaining game played from each roster’s projected strength, this week’s game from the live forecast, then the playoff bracket. Ties in the standings use head-to-head record, then points for. Clinched/Eliminated are exact math, not simulations.',
+  swings: 'Win chance: at the start of each day, the chance each team wins the week, from the score so far, games left under the cap, that day\u2019s rosters and each player\u2019s form up to then (nothing that happened later). The same model is graded on every past matchup: teams given 30% won about 30% of the time. Saturday = the start of the matchup\u2019s last Saturday. Clutch wins = underdogs on Saturday who won; chokes = favorites on Saturday who lost. Clutch rating = wins minus the wins the Saturday chances expected. A lead change = the favorite flipped (crossing 50% by more than 2 points). Each day\u2019s recap shows a team\u2019s points that counted, its best and worst counted game vs what was expected that morning, and regulars who sat. This season\u2019s charts use every refresh.',
   injuries: 'Injuries: a player tagged OUT uses ESPN’s expected return date when there is one (otherwise how often players in the same spot have returned in past seasons). When a key teammate is likely to sit, players who historically gain from his absence get a boost — half of their measured with/without-him gain, which tested best against later games. Teammates with no history together (trades, signings, rookies) get an estimate from position and role: a same-position backup gains most.',
   waivers: 'Waiver wire: free agents ranked by projected fantasy points per game he plays (the games cap makes per-game quality what counts), in this league’s ESPN points scoring, over his games still to come this week and next. Each game = half our model — ESPN’s projection pulled toward his actual season and last 15 days — and half Sleeper’s projection for that specific game, re-scored with this league’s settings + any boost from an injured teammate. Injured players likely to miss most games are listed separately as stashes. “Compare with my team” shows the per-game gain over your weakest healthy player.',
   today: 'Today: free agents ranked only by DraftKings player props for today’s game (points, rebounds, assists, steals, blocks, threes), turned into fantasy points with this league’s scoring. Books re-price within hours of injury news or role changes, so this reacts faster than any season-average model. Turnovers and shooting aren’t priced, so they come from Sleeper’s projection for the game, scaled to the points line. “Since open” = how much the line-implied points moved since the line first came out. Pick your team for a start/sit list of your own players today.',
@@ -124,11 +125,15 @@ window.Core = {
     if (sec === 'matchup' && a && b && c) {
       if (+a !== this.season) await this.selectSeason(+a);
       Object.assign(this, { section: 'matchups', page: 'h2h', weekSel: +b, weekMid: +c });
+      this.loadSwings();
     } else if (sec === 'matchups') {
       // a bare #/matchups always means "now": the live week if one is running
       const target = a ? +a : (this.live?.active ? this.live.season : this.season);
       if (target !== this.season) await this.selectSeason(target);
       Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
+    } else if (sec === 'swings') {
+      Object.assign(this, { section: 'matchups', page: 'swings' });
+      this.loadSwings();
     } else if (sec === 'waivers') {
       Object.assign(this, { section: 'matchups', page: 'waivers' });
     } else if (sec === 'injuries') {

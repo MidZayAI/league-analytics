@@ -231,6 +231,11 @@ def main():
         import live
         live.main()
         write_odds_history()  # include the point the live run just recorded
+    try:  # day-by-day win chances, swings and clutch (finished seasons cached); never fails the refresh
+        import swings
+        swings.build()
+    except Exception as e:
+        print(f"swings step skipped: {e}")
 
 
 if __name__ == "__main__":

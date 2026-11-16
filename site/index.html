@@ -180,6 +180,7 @@
     <!-- ============ MATCHUPS ============ -->
     <section x-show="page === 'matchups'" class="space-y-4">
       <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+        <a href="#/swings" class="week-chip">Swings</a>
         <a href="#/injuries" class="week-chip" x-show="injuries">Injuries</a>
         <a href="#/waivers" class="week-chip" x-show="waivers">Waiver wire</a>
         <template x-for="w in weekList" :key="w.mp">
@@ -293,10 +294,150 @@
       </div>
     </section>
 
+    <!-- ============ SWINGS ============ -->
+    <section x-show="page === 'swings'" class="space-y-4">
+      <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+        <a href="#/matchups" class="week-chip">Matchups</a>
+        <a href="#/swings" class="week-chip active">Swings</a>
+        <a href="#/injuries" class="week-chip">Injuries</a>
+        <a href="#/waivers" class="week-chip">Waiver wire</a>
+      </div>
+      <div>
+        <div class="label">Every matchup, day by day</div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Swings &amp; comebacks
+          <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How win chances work">i</button><span class="pop" x-show="o" x-text="glossary.swings"></span></span></h1>
+      </div>
+      <div class="card text-sm text-ink2" x-show="!swingData">Loading…</div>
+
+      <template x-if="swingData">
+      <div class="space-y-4">
+        <!-- week picker -->
+        <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+          <template x-for="s in swingData.seasons.slice().reverse()" :key="s">
+            <button class="week-chip" :class="s === swSeason && 'active'" @click="swPickSeason(s)" x-text="fmt.seasonLabel(s)"></button>
+          </template>
+        </div>
+        <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+          <template x-for="w in swWeeks" :key="w.mp">
+            <button class="week-chip" :class="w.mp === swWeek && 'active'" @click="swWeek = w.mp" x-text="(w.playoff ? 'P' : 'Wk ') + w.mp"></button>
+          </template>
+        </div>
+
+        <!-- this week's matchups -->
+        <div class="grid md:grid-cols-2 gap-3">
+          <template x-for="m in swWeekGames" :key="m.matchup_id">
+            <div class="card !p-4" :id="`sw-${m.season}-${m.mp}-${m.matchup_id}`" x-data="{ day: null, tv: false }">
+              <div class="flex items-center gap-2">
+                <img class="logo w-7 h-7" :src="logoOf(m.home, m.season)" alt="" @error="$el.src = avatarOf(m.home, m.season)">
+                <span class="font-bold truncate flex-1 text-[13.5px]" :class="m.result === 'L' && 'text-ink2'" x-text="swName(m.home, m.season)"></span>
+                <span class="font-extrabold tabular-nums text-[13.5px]" x-text="`${fmt.n(m.home_pts)} – ${fmt.n(m.away_pts)}`"></span>
+                <span class="font-bold truncate flex-1 text-right text-[13.5px]" :class="m.result === 'W' && 'text-ink2'" x-text="swName(m.away, m.season)"></span>
+                <img class="logo w-7 h-7" :src="logoOf(m.away, m.season)" alt="" @error="$el.src = avatarOf(m.away, m.season)">
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-1.5">
+                <div class="text-[12px] text-ink2 min-w-0" x-text="swCaption(m)"></div>
+                <div class="flex gap-1.5 shrink-0 ml-auto">
+                  <span class="tag" x-show="m.playoff" x-text="m.tier === 'WINNERS_BRACKET' ? 'Playoffs' : 'Consolation'"></span>
+                  <span class="tag" x-show="m.lead_changes" x-text="`${m.lead_changes} lead change${m.lead_changes > 1 ? 's' : ''}`"></span>
+                  <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+                </div>
+              </div>
+              <div x-show="!tv" class="chart h-40 mt-1" x-chart="swChart(m)"></div>
+              <div x-show="tv" x-html="tableHtml(swChart(m))"></div>
+              <div class="flex gap-1 mt-2 overflow-x-auto no-scrollbar">
+                <template x-for="d in swDays(m)" :key="d.i">
+                  <button class="rounded-md px-1.5 py-1 text-center min-w-[42px] text-[11px] leading-tight" :style="d.i === day ? 'background: var(--wash); outline: 1px solid var(--axis)' : 'background: var(--wash)'"
+                          :disabled="!d.why" :class="!d.why && 'opacity-60'" @click="day = day === d.i ? null : d.i">
+                    <div class="text-muted" x-text="d.label + (d.sat ? ' ★' : '')"></div>
+                    <div class="font-semibold" x-text="fmt.pct(d.p, 0)"></div>
+                  </button>
+                </template>
+              </div>
+              <div class="text-[11px] text-muted mt-1" x-show="day == null">% = <span x-text="swName(m.home, m.season)"></span>'s chance at the start of each day. ★ = Saturday. Tap a day for what happened.</div>
+              <template x-if="day != null && m.series[day]?.why">
+                <div class="mt-2 text-[12px] space-y-1 rounded-lg p-2.5" style="background: var(--wash)">
+                  <div class="font-semibold" x-text="`${swDays(m)[day].label}: ${fmt.pct(m.series[day].p, 0)} → ${fmt.pct(m.series[day + 1]?.p, 0)}`"></div>
+                  <template x-for="(side, k) in m.series[day].why" :key="k">
+                    <div class="flex gap-2"><span class="font-semibold shrink-0 w-24 truncate" x-text="swName(k ? m.away : m.home, m.season)"></span><span class="text-ink2" x-text="swWhy(m, side)"></span></div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- history -->
+        <div class="pt-2">
+          <h2 class="text-xl font-extrabold tracking-tight">League history</h2>
+          <div class="flex flex-wrap gap-2 mt-2 items-center">
+            <select class="week-chip" x-model="swHist">
+              <option value="all">All seasons</option>
+              <template x-for="s in swingData.seasons.slice().reverse()" :key="s"><option :value="String(s)" x-text="fmt.seasonLabel(s)"></option></template>
+            </select>
+            <select class="week-chip" x-model="swTeam">
+              <option value="all">All teams</option>
+              <template x-for="t in swTeams" :key="t.id"><option :value="t.id" x-text="t.name"></option></template>
+            </select>
+            <button class="week-chip" :class="swPlayoffs && 'active'" @click="swPlayoffs = !swPlayoffs" x-text="swPlayoffs ? 'Playoffs included' : 'Regular season only'"></button>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-3">
+          <template x-for="col in [['clutch', 'Clutch wins', 'Biggest underdogs on Saturday morning who won'], ['chokes', 'Chokes', 'Biggest favorites on Saturday morning who lost'], ['comebacks', 'Biggest comebacks', 'Lowest win chance at any point, then won'], ['wild', 'Wildest weeks', 'Most lead changes (the favorite flipped)'], ['moves', 'Biggest one-day swings', 'Largest change in win chance from one day to the next']]" :key="col[0]">
+            <div class="card">
+              <h3 x-text="col[1]"></h3>
+              <div class="sub mb-2" x-text="col[2]"></div>
+              <template x-for="r in swLists[col[0]]" :key="r.key">
+                <button class="w-full flex items-center gap-2.5 py-1.5 border-t text-left" style="border-color: var(--grid)" @click="swOpen(r.m)">
+                  <img class="logo w-8 h-8" :src="logoOf(r.team, r.m.season)" alt="" @error="$el.src = avatarOf(r.team, r.m.season)">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-semibold truncate" x-text="r.title"></div>
+                    <div class="text-[11px] text-muted truncate"><span x-show="r.m.playoff" class="font-semibold" x-text="r.m.tier === 'WINNERS_BRACKET' ? 'Playoffs · ' : 'Consolation · '"></span><span x-text="r.sub"></span></div>
+                  </div>
+                  <span class="font-extrabold text-[14px] shrink-0" :class="r.cls" x-text="r.val"></span>
+                </button>
+              </template>
+              <div class="text-[12px] text-muted py-2" x-show="!swLists[col[0]].length">None yet.</div>
+            </div>
+          </template>
+
+          <!-- clutch rating -->
+          <div class="card md:col-span-2" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3">
+              <h3>Clutch rating</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div class="sub mb-2">Wins above what each team&rsquo;s Saturday-morning win chances expected. +2 = two more wins than the odds said going into the weekend.</div>
+            <div x-show="!tv" class="chart h-64" x-chart="swClutchChart()"></div>
+            <div x-show="tv" class="overflow-x-auto">
+              <table class="tbl w-full">
+                <thead><tr><th>Team</th><th class="num">Clutch</th><th class="num">Won</th><th class="num">Expected</th><th class="num">Comebacks</th><th class="num">Blown leads</th></tr></thead>
+                <tbody>
+                  <template x-for="r in swClutch" :key="r.owner">
+                    <tr>
+                      <td class="font-medium" x-text="swName(r.team_id, r.season)"></td>
+                      <td class="num font-bold" :class="r.clutch > 0 ? 'up' : r.clutch < 0 ? 'down' : ''" x-text="fmt.signed(r.clutch, 1)"></td>
+                      <td class="num" x-text="fmt.n(r.wins, 1)"></td>
+                      <td class="num text-ink2" x-text="fmt.n(r.exp, 1)"></td>
+                      <td class="num" x-text="r.comebacks"></td>
+                      <td class="num" x-text="r.blown"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div class="text-[11px] text-muted mt-2" x-text="`Comeback = won after being under ${fmt.pct(swingData.thresholds.comeback, 0)} on Saturday morning. Blown lead = lost after being over ${fmt.pct(swingData.thresholds.blown, 0)}.`"></div>
+          </div>
+        </div>
+      </div>
+      </template>
+    </section>
+
     <!-- ============ WAIVER WIRE ============ -->
     <section x-show="page === 'waivers'" class="space-y-4">
       <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
         <a href="#/matchups" class="week-chip">Matchups</a>
+        <a href="#/swings" class="week-chip">Swings</a>
         <a href="#/injuries" class="week-chip">Injuries</a>
         <a href="#/waivers" class="week-chip active">Waiver wire</a>
       </div>
@@ -547,6 +688,7 @@
     <section x-show="page === 'injuries'" class="space-y-4">
       <div class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
         <a href="#/matchups" class="week-chip">Matchups</a>
+        <a href="#/swings" class="week-chip">Swings</a>
         <a href="#/injuries" class="week-chip active">Injuries</a>
         <a href="#/waivers" class="week-chip">Waiver wire</a>
       </div>
@@ -851,6 +993,19 @@
             </template>
           </div>
         </div>
+
+        <template x-if="swFind(season, weekSel, weekMid)">
+          <div class="card" x-data="{ tv: false }">
+            <div class="flex items-center justify-between gap-3 mb-1">
+              <h3>Win chance, day by day</h3>
+              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+            </div>
+            <div class="sub mb-1" x-text="swCaption(swFind(season, weekSel, weekMid))"></div>
+            <div x-show="!tv" class="chart h-48" x-chart="swChart(swFind(season, weekSel, weekMid), h2hPast.a.team_id)"></div>
+            <div x-show="tv" x-html="tableHtml(swChart(swFind(season, weekSel, weekMid), h2hPast.a.team_id))"></div>
+            <a href="#/swings" class="text-[12px] font-semibold" style="color: var(--s1)" @click="swOpen(swFind(season, weekSel, weekMid))">Every matchup&rsquo;s swings &rarr;</a>
+          </div>
+        </template>
 
         <div class="grid md:grid-cols-2 gap-4">
           <template x-for="s in [h2hPast.a, h2hPast.b]" :key="s.team_id">
@@ -2374,7 +2529,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=c437f7991b"></script>
+<script src="js/core.js?v=56014f8a19"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2385,7 +2540,8 @@
 <script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=8b8ed40393"></script>
 <script src="js/draft.js?v=16f004af6f"></script>
-<script src="js/app.js?v=72d19db3fd"></script>
+<script src="js/swings.js?v=f6a2e3e47a"></script>
+<script src="js/app.js?v=5cf6858cb1"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>
