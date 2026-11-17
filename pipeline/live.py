@@ -539,6 +539,13 @@ def main():
         except Exception as e:
             print(f"lineups skipped: {e}")
         proj.save_log()
+    try:  # power rankings + management (reads the files written above); never fails the refresh
+        import power
+        power.build()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"power skipped: {e}")
     print(f"live: week {mp}, day {sp_now}: " + ", ".join(
         f"{x['home']['name']} {x['home']['win_prob']:.0%} vs {x['away']['name']}" for x in matchups))
 

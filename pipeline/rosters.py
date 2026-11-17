@@ -81,6 +81,9 @@ def build(ctx, players, exp, lt, proj, team_out, roster, pool, abbrev, names):
         up = ctx.run(shifted, seed=SEED)
         teams[str(tid)] = {"name": names.get(tid), "players": rows,
                            "weekly_sim": round(ctx.weekly(exp, tid), 1), "weekly_fill": round(fill(rows, cap_avg), 1),
+                           # expected points per playoff week (playoff-week games and caps, returns from injury)
+                           "playoff_weekly": round(float(np.mean([exp[(tid, r)] for r in ctx.rounds if (tid, r) in exp])), 1)
+                           if any((tid, r) in exp for r in ctx.rounds) else None,
                            "sens": {k: round(up[tid][k] - base[tid][k], 4) for k in ("playoff", "bye", "title")},
                            # effect of THIS team getting stronger on every team's odds (a trade moves two teams)
                            "sens_on": {str(o): {k: round(up[o][k] - base[o][k], 4) for k in ("playoff", "title")}
