@@ -1,25 +1,25 @@
 {
- "updated_at": "2026-11-20T07:53:39+00:00",
+ "updated_at": "2026-11-20T13:20:34+00:00",
  "market": [
-  0.179,
-  0.122,
-  0.699
+  0.176,
+  0.121,
+  0.703
  ],
- "market_n": 1565,
+ "market_n": 1606,
  "market_rmse": {
-  "model": 13.87,
-  "sleeper": 14.05,
-  "market": 13.62,
-  "blend": 13.65
+  "model": 13.83,
+  "sleeper": 14.01,
+  "market": 13.59,
+  "blend": 13.61
  },
  "nomarket": [
-  0.664,
-  0.336
+  0.663,
+  0.337
  ],
- "nomarket_n": 1787,
+ "nomarket_n": 1834,
  "nomarket_rmse": {
-  "model": 13.84,
-  "sleeper": 14.08,
-  "blend": 13.83
+  "model": 13.8,
+  "sleeper": 14.03,
+  "blend": 13.79
  }
 }
