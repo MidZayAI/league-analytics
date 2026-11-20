@@ -1988,9 +1988,10 @@
         </template>
 
         <!-- grade cards -->
+        <div class="text-[12px] text-muted -mb-2">Tap a team for every pickup it made.</div>
         <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <template x-for="w in DR?.waivers || []" :key="w.team_id">
-            <div class="card !p-4">
+            <div class="card !p-4 cursor-pointer transition" :style="w.team_id === drWTeam ? 'outline: 2px solid var(--s1)' : ''" @click="drWOpen(w.team_id)" role="button" :aria-label="`Pickup report for ${drName(w.team_id)}`">
               <div class="flex items-center gap-2">
                 <img class="logo w-8 h-8" :src="logoOf(w.team_id)" alt="" @error="$el.src = silhouette">
                 <span class="font-bold truncate flex-1" x-text="drName(w.team_id)"></span>
@@ -2007,6 +2008,97 @@
             </div>
           </template>
         </div>
+
+        <!-- team pickup report -->
+        <template x-if="drWRow">
+          <div id="dr-report" class="card space-y-4">
+            <div class="flex items-center gap-3">
+              <img class="logo w-11 h-11" :src="logoOf(drWTeam)" alt="" @error="$el.src = silhouette">
+              <div class="min-w-0 flex-1">
+                <div class="label">Pickup report</div>
+                <div class="text-lg font-extrabold truncate" x-text="drName(drWTeam)"></div>
+              </div>
+              <span class="text-3xl font-extrabold" :style="`color: ${drGradeColor(drWRow.grade)}`" x-text="drWRow.grade"></span>
+              <button class="week-chip" @click="drWTeam = null">Close</button>
+            </div>
+            <div class="flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+              <template x-for="w in DR.waivers" :key="w.team_id">
+                <button class="week-chip !py-1 !px-2.5 text-[12px]" :class="w.team_id === drWTeam && 'active'" @click="drWTeam = w.team_id" x-text="drName(w.team_id)"></button>
+              </template>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="rounded-lg py-2" style="background: var(--wash)"><div class="label">Net vs replacement</div><div class="font-bold" :class="drWRow.par >= 0 ? 'up' : 'down'" x-text="`${fmt.signed(drWRow.par, 0)} pts`"></div></div>
+              <div class="rounded-lg py-2" style="background: var(--wash)"><div class="label">Per week</div><div class="font-bold" x-text="fmt.signed(drWRow.par_per_week, 0)"></div></div>
+              <div class="rounded-lg py-2" style="background: var(--wash)"><div class="label">Paid off</div><div class="font-bold" x-text="`${drWRow.hits} / ${drWRow.adds}`"></div></div>
+            </div>
+            <div>
+              <div class="font-medium text-sm mb-0.5">Waiver value over the season</div>
+              <div class="sub mb-1">Running total of points above replacement from pickups&rsquo; counted games. Dots = when each player was added.</div>
+              <div class="chart h-56" x-chart="drWaiverRunChart()"></div>
+            </div>
+
+            <div>
+              <h3 class="mb-1">Every pickup, latest first</h3>
+              <template x-for="a in drTeamAdds" :key="a.player_id + '-' + a.added">
+                <div class="py-3 border-t" style="border-color: var(--grid)" x-data="{ wk: null }">
+                  <div class="flex items-center gap-2.5">
+                    <img class="hs w-10 h-10" :src="headshot(a.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                    <div class="min-w-0 flex-1">
+                      <div class="font-bold text-[14px] truncate" x-text="a.name"></div>
+                      <div class="text-[11.5px] text-muted truncate" x-text="drSpan(a)"></div>
+                    </div>
+                    <div class="text-right shrink-0">
+                      <div class="font-extrabold text-[15px]" :class="a.par >= 0 ? 'up' : 'down'" x-text="fmt.signed(a.par, 0)"></div>
+                      <span class="text-[10.5px] font-semibold rounded-full px-2 py-0.5" :style="drVerdictStyle(a.verdict)" x-text="a.verdict"></span>
+                    </div>
+                  </div>
+                  <div class="text-[11.5px] text-ink2 mt-1.5" x-show="a.dropped_for.length" x-text="'Made room by dropping ' + a.dropped_for.map(d => d.name + (d.fpg_after != null ? ` (${fmt.n(d.fpg_after, 1)}/g since)` : '')).join(', ')"></div>
+                  <div class="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-1 items-center mt-2 text-[11.5px]">
+                    <span class="text-ink2 w-24">Him, per game</span>
+                    <div class="h-2 rounded-full" style="background: var(--wash)"><div class="h-2 rounded-full" :style="`width: ${drBarW(a, 'me')}; background: var(${a.par >= 0 ? '--good' : '--bad'})`"></div></div>
+                    <span class="font-semibold tabular-nums" x-text="a.counted_fpg != null ? fmt.n(a.counted_fpg, 1) : '–'"></span>
+                    <span class="text-ink2 w-24">Replacement</span>
+                    <div class="h-2 rounded-full" style="background: var(--wash)"><div class="h-2 rounded-full" :style="`width: ${drBarW(a, 'base')}; background: var(--muted)`"></div></div>
+                    <span class="tabular-nums text-ink2" x-text="fmt.n(a.base_fpg, 1)"></span>
+                  </div>
+                  <div class="flex items-end gap-3 mt-2">
+                    <div class="text-[11.5px] text-muted" x-text="`${a.counted_gp} counted games` + (a.bench_gp ? ` · +${a.bench_gp} on bench` : '')"></div>
+                    <div class="flex items-stretch gap-1 h-[30px] ml-auto" x-show="a.weeks.length">
+                      <template x-for="w in a.weeks" :key="w.mp">
+                        <button class="flex flex-col w-5 cursor-pointer rounded-sm" :title="drWeekTip(w)" @click="wk = wk === w.mp ? null : w.mp" :style="wk === w.mp ? 'outline: 1px solid var(--ink2)' : ''">
+                          <div class="w-full rounded-sm" :style="drWeekBarStyle(w, a)"></div>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5 mt-1.5">
+                    <template x-for="w in a.weeks.filter(w => w.swung)" :key="w.mp">
+                      <span class="tag" :class="w.swung === 'won' ? 'up' : 'down'" x-text="w.swung === 'won' ? `Swung week ${w.mp}: win` : `Cost week ${w.mp}`"></span>
+                    </template>
+                  </div>
+                  <div class="text-[11.5px] text-ink2 mt-1 rounded-md p-2" style="background: var(--wash)" x-show="wk != null" x-text="wk != null ? drWeekTip(a.weeks.find(w => w.mp === wk)) : ''"></div>
+                </div>
+              </template>
+              <div class="text-sm text-muted py-2" x-show="!drTeamAdds.length">No pickups yet.</div>
+            </div>
+
+            <div x-show="drGotAway.length">
+              <h3 class="mb-1">Ones that got away</h3>
+              <div class="sub mb-1">Players this team dropped and what they&rsquo;ve done since (every game, any team), vs replacement over the same dates.</div>
+              <template x-for="g in drGotAway" :key="g.player_id + g.dropped">
+                <div class="flex items-center gap-2.5 py-1.5 border-t" style="border-color: var(--grid)">
+                  <img class="hs w-8 h-8" :src="headshot(g.player_id)" alt="" loading="lazy" @error="$el.src = silhouette">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-semibold truncate" x-text="g.name"></div>
+                    <div class="text-[11px] text-muted truncate" x-text="`Dropped ${fmt.date(g.dropped)} · since: ${fmt.n(g.fpg, 1)}/g over ${g.gp} games` + (g.now_team ? ` · now on ${drName(g.now_team)}` : ' · free agent')"></div>
+                  </div>
+                  <span class="font-extrabold text-[14px] shrink-0" :class="g.par >= 0 ? 'down' : 'up'" x-text="fmt.signed(g.par, 0)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
 
         <!-- best finds & flops -->
         <div class="grid md:grid-cols-2 gap-3">
@@ -2781,7 +2873,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=d8418796c0"></script>
+<script src="js/core.js?v=341069e798"></script>
 <script src="js/legacy.js?v=2bc2697c3b"></script>
 <script src="js/matchups.js?v=b5d83dc947"></script>
 <script src="js/teams.js?v=2d70216709"></script>
@@ -2791,7 +2883,7 @@
 <script src="js/injuries.js?v=715cd78cec"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
 <script src="js/trades.js?v=8b8ed40393"></script>
-<script src="js/draft.js?v=16f004af6f"></script>
+<script src="js/draft.js?v=7bfaea952c"></script>
 <script src="js/swings.js?v=002f788b00"></script>
 <script src="js/power.js?v=f25b32cce9"></script>
 <script src="js/app.js?v=2802ed87b4"></script>

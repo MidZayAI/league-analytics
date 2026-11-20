@@ -7,7 +7,9 @@
   PAR           points above replacement: sum over games of (FP - replacement FP/game)
                 draft:   every game a drafted player played while on the drafting team (his production,
                          started or not; lineup decisions are rated by Coaching)
-                waivers: only games that counted in the lineup, while the pickup was on the roster
+                waivers: only games that counted in the lineup, while the pickup was on the roster,
+                         against replacement over the same dates: each matchup week has its own level
+                         (that week +/- one week of games), weighted by the pickup's counted games
   WAR           PAR / points per win; points per win = sd(weekly margin) x sqrt(2 pi), i.e. the extra
                 points a week that turn one expected loss into a win at an even matchup
   vs slot       a pick's PAR minus what that draft slot usually delivers to its drafter over the same
@@ -130,6 +132,27 @@ def replacement(season, d0, d1, rostered):
     return float(band.mean()) if len(band) else None
 
 
+def weekly_replacement(season, caps, dates, sp0, sp1, rostered, fallback):
+    """Replacement FP/game for each matchup week, over that week +/- one week (short weeks aren't noisy)."""
+    c = caps[(caps.sp_start <= sp1)].sort_values("mp")
+    mps = c.mp.tolist()
+    out = {}
+    for i, r in enumerate(c.itertuples()):
+        a = c.iloc[max(i - 1, 0)].sp_start
+        b = c.iloc[min(i + 1, len(c) - 1)].sp_end
+        a, b = max(int(a), sp0), min(int(b), sp1)
+        v = replacement(season, dates[a].isoformat(), dates[b].isoformat(), rostered) if a <= b else None
+        out[int(r.mp)] = v if v else fallback
+    return out, mps
+
+
+VERDICTS = ((100, "Big win"), (25, "Helped"), (-25, "Wash"))
+
+
+def verdict(par):
+    return next((v for cut, v in VERDICTS if par >= cut), "Hurt")
+
+
 def season_ranks(season, d0, d1):
     """Every NBA player's total fantasy points over [d0, d1] and his rank by them (1 = most)."""
     tot = {}
@@ -226,7 +249,12 @@ def analyze_season(season):
            "picks": pick_rows, "team_names": {str(k): v for k, v in tname.items()},
            "owners": {str(k): v for k, v in zip(teams.team_id, teams.owner_id)}}
 
-    # ---- waiver / free-agent pickups: counted games above replacement while on the roster
+    # ---- waiver / free-agent pickups: counted games above replacement (same dates) while on the roster
+    logs = nba_logs.load(season)
+    wrepl, _ = weekly_replacement(season, t["caps"], dates, sp0, sp1, n_teams * rounds, repl)
+    mp_of = dict(zip(t["calendar"].sp, t["calendar"].mp))
+    mm = t["matchups"][t["matchups"].result.isin(["W", "L", "T"])]
+    margin_of = {(int(x.team_id), int(x.mp)): (x.result, float(x.pts - x.opp_pts)) for x in mm.itertuples()}
     adds = []
     drafted = {(p["playerId"], p["teamId"]) for p in picks}
     drafted_any = {p["playerId"] for p in picks}
@@ -241,17 +269,106 @@ def analyze_season(season):
             continue
         fp, gp = prod(r.player_id, r.team_id, int(r.first), int(r.last), counted_only=True)
         tot, tgp = prod(r.player_id, r.team_id, int(r.first), int(r.last))
-        par = fp - repl * gp
+        x = played[(played.player_id == r.player_id) & (played.team_id == r.team_id) & (played.sp >= r.first) & (played.sp <= r.last)]
+        weeks, par = [], 0.0
+        for mp, g in x.groupby("mp"):
+            c = g[g.counted]
+            base = wrepl.get(int(mp), repl)
+            wp = float(c.pts.sum()) - base * int(c.gp.sum())
+            par += wp
+            res = margin_of.get((int(r.team_id), int(mp)))
+            weeks.append({"mp": int(mp), "counted_gp": int(c.gp.sum()), "fp": float(c.pts.sum()),
+                          "bench_gp": int(g[~g.counted].gp.sum()), "bench_fp": float(g[~g.counted].pts.sum()),
+                          "base": round(base, 1), "par": round(wp, 1),
+                          "swung": ("won" if res and res[0] == "W" and 0 < res[1] < wp else
+                                    "lost" if res and res[0] == "L" and 0 < -res[1] < -wp else None),
+                          "result": res[0] if res else None, "margin": res[1] if res else None})
+        if not weeks:  # never played for them: judge against the level when he was added
+            par = 0.0
+        cg = sum(w["counted_gp"] for w in weeks)
+        base_fpg = (sum(w["base"] * w["counted_gp"] for w in weeks) / cg) if cg else wrepl.get(mp_of.get(int(r.first)), repl)
         adds.append({"team_id": int(r.team_id), "player_id": int(r.player_id), "name": names.get(r.player_id),
                      "added": dates[int(r.first)].isoformat(), "dropped": dates[int(r.last) + 1].isoformat() if r.last < sp1 else None,
                      "counted_gp": gp, "counted_fp": round(fp, 1), "par": round(par, 1), "war": round(par / ppw, 2),
+                     "base_fpg": round(base_fpg, 1), "counted_fpg": round(fp / gp, 1) if gp else None,
+                     "bench_gp": tgp - gp, "bench_fp": round(tot - fp, 1), "verdict": verdict(par),
+                     "weeks": weeks, "dropped_for": [], "_first": int(r.first), "_last": int(r.last),
                      "gp": tgp, "fp": round(tot, 1), "preseason": bool(preseason)})
     # "played like the #N player": his FP/game while on the roster vs the season's regulars
     pg = sorted((tot_ / g_ for tot_, g_ in season_fp.values() if g_ >= MIN_SHARE * tg), reverse=True)
     for a in adds:
         a["fpg"] = round(a["fp"] / a["gp"], 1) if a["gp"] else None
         a["pg_rank"] = (1 + sum(v > a["fpg"] for v in pg)) if a["gp"] >= 3 else None
+    # who made room: pair each add with a drop by the same team that day or the day before, one drop per add
+    drops = {}
+    for d in st[st["last"] < sp1].itertuples():
+        nxt = st[(st.player_id == d.player_id) & (st["first"] == d.last + 1)]
+        if len(nxt) and int(nxt.iloc[0].team_id) != int(d.team_id):
+            continue  # went straight to another team: a trade
+        drops.setdefault(int(d.team_id), []).append(d)
+    taken = set()
+    for a in sorted(adds, key=lambda a: a["_first"]):
+        if a["preseason"]:
+            continue
+        cands = [d for d in drops.get(a["team_id"], []) if a["_first"] - 2 <= d.last <= a["_first"] - 1
+                 and (d.player_id, d.last) not in taken and d.player_id != a["player_id"]]
+        if not cands:
+            continue
+        d = max(cands, key=lambda d: d.last)  # the drop closest to the add
+        taken.add((d.player_id, d.last))
+        after = [fp_ for _, day, _, mins, fp_ in (logs.get(str(d.player_id)) or {}).get("games", [])
+                 if dates[int(d.last) + 1].isoformat() <= day <= dates[a["_last"]].isoformat() and mins]
+        a["dropped_for"] = [{"player_id": int(d.player_id), "name": names.get(d.player_id) or _logname(season, d.player_id),
+                             "gp_after": len(after), "fpg_after": round(sum(after) / len(after), 1) if after else None}]
+    for a in adds:
+        a.pop("_first", None)
+        a.pop("_last", None)
     out["adds"] = sorted(adds, key=lambda a: -a["par"])
+    out["weekly_replacement"] = {str(k): round(v, 1) for k, v in wrepl.items()}
+
+    # running waiver value per team: cumulative points above same-dates replacement by date
+    series, markers = {}, {}
+    for tid in sorted(daily.team_id.unique()):
+        mine = [a for a in adds if a["team_id"] == tid]
+        keys = {(a["player_id"]) for a in mine}
+        spans = [(a["player_id"], a["added"], a["dropped"] or "9999") for a in mine]
+        c = played[(played.team_id == tid) & played.counted & played.player_id.isin(keys)]
+        by_day = {}
+        for g in c.itertuples():
+            day = dates[int(g.sp)].isoformat()
+            if any(p == g.player_id and a <= day < b for p, a, b in spans):
+                by_day[day] = by_day.get(day, 0.0) + float(g.pts) - wrepl.get(int(g.mp), repl) * int(g.gp)
+        cum, pts = 0.0, []
+        for sp in range(sp0, sp1 + 1):
+            day = dates[sp].isoformat()
+            cum += by_day.get(day, 0.0)
+            pts.append([day, round(cum, 1)])
+        series[str(tid)] = pts
+        markers[str(tid)] = [[a["added"], a["name"]] for a in sorted(mine, key=lambda a: a["added"]) if not a["preseason"]]
+    out["waiver_series"], out["waiver_markers"] = series, markers
+
+    # ones that got away: players a team dropped who produced after (any team or free agency)
+    got = {}
+    for d in st[st["last"] < sp1].itertuples():
+        nxt = st[(st.player_id == d.player_id) & (st["first"] > d.last)].sort_values("first")
+        back = nxt[(nxt.team_id == d.team_id) & (nxt["first"] <= d.last + 4)]
+        if len(back):
+            continue
+        if len(nxt) and int(nxt.iloc[0]["first"]) == int(d.last) + 1 and int(nxt.iloc[0].team_id) != int(d.team_id):
+            continue  # moved straight to another team: a trade
+        drop_day = dates[int(d.last) + 1].isoformat()
+        g = [(day, fp_) for _, day, _, mins, fp_ in (logs.get(str(d.player_id)) or {}).get("games", []) if drop_day <= day <= d1 and mins]
+        if len(g) < 3:
+            continue
+        sp_of_day = {v.isoformat(): k for k, v in dates.items()}
+        above = sum(fp_ - wrepl.get(mp_of.get(sp_of_day.get(day)), repl) for day, fp_ in g)
+        who = nxt.iloc[0] if len(nxt) else None
+        got.setdefault(str(int(d.team_id)), []).append({
+            "player_id": int(d.player_id), "name": names.get(d.player_id) or _logname(season, d.player_id),
+            "dropped": drop_day, "gp": len(g), "fpg": round(sum(f for _, f in g) / len(g), 1), "par": round(above, 1),
+            "now_team": int(who.team_id) if who is not None else None,
+            "picked_up": dates[int(who["first"])].isoformat() if who is not None else None})
+    out["got_away"] = {k: sorted(v, key=lambda x: -x["par"])[:5] for k, v in got.items()}
     reg = t["matchups"][~t["matchups"].playoff & t["matchups"].result.isin(["W", "L", "T"])]
     out["weeks_done"] = int(reg.mp.nunique())
     return out

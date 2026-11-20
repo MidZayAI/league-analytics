@@ -1,7 +1,7 @@
 /* League > Draft & waivers: value above replacement (WAR-style) for draft picks and waiver pickups. */
 
 window.Draft = {
-  draftData: null, drTab: 'draft', drOpen: null,
+  draftData: null, drTab: 'draft', drOpen: null, drWTeam: null,
 
   async loadDraft() {
     if (!this.draftData) {
@@ -84,6 +84,61 @@ window.Draft = {
   drAddLine(label, pid, tid) {
     const a = this.drAdd(pid, tid);
     return a ? `${label}: ${a.name} ${a.par > 0 ? '+' : ''}${Math.round(a.par)} pts${a.pg_rank ? ` (played like #${a.pg_rank})` : ''}` : '';
+  },
+  // ---------- per-team pickup report
+  drWOpen(tid) {
+    this.drWTeam = this.drWTeam === tid ? null : tid;
+    if (this.drWTeam != null) this.$nextTick(() => document.getElementById('dr-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  },
+  get drWRow() { return (this.DR?.waivers || []).find((w) => w.team_id === this.drWTeam) || null; },
+  get drTeamAdds() {
+    return (this.DR?.adds || []).filter((a) => a.team_id === this.drWTeam)
+      .slice().sort((a, b) => (b.added > a.added ? 1 : b.added < a.added ? -1 : b.par - a.par));
+  },
+  get drGotAway() { return this.DR?.got_away?.[this.drWTeam] || []; },
+  drVerdictStyle(v) {
+    const c = { 'Big win': '--good', Helped: '--s1', Wash: '--muted', Hurt: '--bad' }[v] || '--muted';
+    return `background: color-mix(in srgb, var(${c}) 20%, var(--wash)); color: var(${c === '--muted' ? '--ink2' : c})`;
+  },
+  drSpan(a) {
+    const end = a.dropped ? `dropped ${fmt.date(a.dropped)}` : 'still on roster';
+    return a.preseason ? `Pre-season pickup · ${end}` : `Added ${fmt.date(a.added)} · ${end}`;
+  },
+  // FP/game bar widths (his counted FP/g vs the same-dates replacement), scaled to the bigger of the two
+  drBarW(a, which) {
+    const top = Math.max(a.counted_fpg || 0, a.base_fpg || 0, 1);
+    return `${Math.round(((which === 'me' ? a.counted_fpg : a.base_fpg) || 0) / top * 100)}%`;
+  },
+  drWeekBarStyle(w, a) {
+    const top = Math.max(...a.weeks.map((x) => Math.abs(x.par)), 1);
+    const h = Math.max(3, Math.round(Math.abs(w.par) / top * 26));
+    return `height: ${h}px; background: var(${w.par >= 0 ? '--good' : '--bad'}); ${w.par >= 0 ? 'margin-top: auto' : 'margin-bottom: auto'}`;
+  },
+  drWeekTip(w) {
+    return `Week ${w.mp}: ${w.counted_gp} counted games, ${fmt.n(w.fp)} pts vs ${fmt.n(w.base, 1)}/g replacement → ${fmt.signed(w.par, 0)}`
+      + (w.bench_gp ? ` · ${w.bench_gp} on bench (${fmt.n(w.bench_fp)} pts)` : '')
+      + (w.swung === 'won' ? ` · won by ${fmt.n(w.margin)}: he made the difference` : w.swung === 'lost' ? ` · lost by ${fmt.n(-w.margin)}: cost the win` : '');
+  },
+  drWaiverRunChart() {
+    void this.themeTick;
+    const tid = this.drWTeam, S = this.DR?.waiver_series?.[tid];
+    if (!S?.length) return null;
+    const M = (this.DR.waiver_markers?.[tid] || []);
+    const at = Object.fromEntries(S);
+    return { option: {
+      ...base(), grid: { ...base().grid, top: 30, right: 16 },
+      tooltip: { ...base().tooltip, trigger: 'axis', formatter: (ps) => { const [dt, v] = ps[0].value, d = dt.slice(0, 10);
+        const adds = M.filter((m) => m[0] === d).map((m) => m[1]);
+        return `<b>${fmt.date(d)}</b>` + tipRow('Above replacement so far', fmt.signed(v, 0)) + (adds.length ? tipRow('Added', esc(adds.join(', '))) : ''); } },
+      xAxis: axis({ type: 'time', splitLine: { show: false }, axisLabel: { color: TOK('--muted'), fontSize: 11, formatter: (v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) } }),
+      yAxis: axis({ type: 'value' }),
+      series: [{ type: 'line', data: S.map(([d, v]) => [d + 'T12:00:00', v]), symbol: 'none', lineStyle: { width: 2.5, color: TOK('--s1') },
+        areaStyle: { color: TOK('--s1'), opacity: 0.1 },
+        markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: TOK('--axis'), type: 'solid' }, data: [{ yAxis: 0 }] },
+        markPoint: { silent: true, data: M.filter((m) => at[m[0]] != null).map((m) => ({ coord: [m[0] + 'T12:00:00', at[m[0]]], symbol: 'circle', symbolSize: 8,
+          itemStyle: { color: TOK('--s1'), borderColor: TOK('--surface'), borderWidth: 2 },
+          label: { show: true, position: 'top', formatter: this.drLast(m[1]), color: TOK('--ink2'), fontSize: 10 } })) } }],
+    } };
   },
   drWaiverChart() {
     void this.themeTick;
