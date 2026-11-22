@@ -35,29 +35,58 @@ const SILHOUETTE = "data:image/svg+xml," + encodeURIComponent(
 
 const POLL_MS = 2 * 60 * 1000;  // how often an open page checks for a new refresh
 
+// Five tabs. Each tab's views show as one row of pills (SUBNAV); pages keep their old ids.
 const SECTIONS = [
-  { id: 'matchups', label: 'Matchups', icon: 'M4 6h16M4 12h16M4 18h10' },
-  { id: 'teams', label: 'Teams', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9c1-4 4-6 7-6s6 2 7 6' },
+  { id: 'live', label: 'Live', icon: 'M3 12h4l3-8 4 16 3-8h4' },
   { id: 'league', label: 'League', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
+  { id: 'teams', label: 'Teams', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9c1-4 4-6 7-6s6 2 7 6' },
+  { id: 'moves', label: 'Moves', icon: 'M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4' },
   { id: 'history', label: 'History', icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-3-6.7M21 4v4h-4' },
 ];
+const SUBNAV = {
+  league: [
+    { id: 'standings', label: 'Standings', href: '#/league/standings', pages: ['standings', 'odds'] },
+    { id: 'power', label: 'Power rankings', href: '#/league/power', pages: ['power'] },
+    { id: 'deep', label: 'Deep stats', href: '#/league/deep', pages: ['luck', 'expected', 'coaching', 'cap'] },
+  ],
+  moves: [
+    { id: 'waivers', label: 'Waiver wire', href: '#/moves/waivers', pages: ['waivers', 'injuries'] },
+    { id: 'trades', label: 'Trade analyzer', href: '#/moves/trades', pages: ['trades'] },
+    { id: 'draft', label: 'Draft grades', href: '#/moves/draft', pages: ['draft'] },
+  ],
+  history: [
+    { id: 'franchises', label: 'All-time', href: '#/history', pages: ['franchises'] },
+    { id: 'swings', label: 'Swings & comebacks', href: '#/history/swings', pages: ['swings'] },
+  ],
+};
+// second-level pills inside a sub-view until those pages are merged (phase 2)
+const SUBSUB = {
+  standings: [{ id: 'standings', label: 'Table' }, { id: 'odds', label: 'Playoff odds' }],
+  deep: [{ id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' }, { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' }],
+  waivers: [{ id: 'waivers', label: 'Pickups' }, { id: 'injuries', label: 'Injuries' }],
+};
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
   { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' }, { id: 'odds', label: 'Playoff odds' },
   { id: 'draft', label: 'Draft & waivers' },
 ];
-const OLD_PAGES = { week: 'matchups', standings: 'league/standings', luck: 'league/luck', expected: 'league/expected',
-                    coaching: 'league/coaching', cap: 'league/cap', franchises: 'history' };
+// old links keep working
+const OLD_PAGES = { week: 'live', matchups: 'live', standings: 'league/standings', luck: 'league/luck', expected: 'league/expected',
+                    coaching: 'league/coaching', cap: 'league/cap', franchises: 'history', waivers: 'moves/waivers',
+                    injuries: 'moves/injuries', trades: 'moves/trades', power: 'league/power', swings: 'history/swings' };
+const SUB_HREF = { standings: '#/league/standings', odds: '#/league/odds', luck: '#/league/luck', expected: '#/league/expected',
+                   coaching: '#/league/coaching', cap: '#/league/cap', waivers: '#/moves/waivers', injuries: '#/moves/injuries' };
 
 window.Core = {
   meta: null, history: null, seasons: {}, season: null, live: null, backtest: null,
-  section: 'matchups', page: 'matchups', loading: true, error: null, themeTick: 0,
+  section: 'live', page: 'matchups', loading: true, error: null, themeTick: 0, myOwner: null,
   teamSel: null, ownerSel: null, luckTeam: 'all', luckFilter: 'all', includeCurrent: false,
   weekSel: null, weekMid: null, gridView: false, rosterSide: 0, nowTick: Date.now(),
-  sections: SECTIONS, leagueViews: LEAGUE_VIEWS, glossary: GLOSSARY, silhouette: SILHOUETTE,
+  sections: SECTIONS, subnavs: SUBNAV, subsubs: SUBSUB, subHref: SUB_HREF, leagueViews: LEAGUE_VIEWS, glossary: GLOSSARY, silhouette: SILHOUETTE,
   fmt, tableHtml,
 
   async init() {
+    try { this.myOwner = localStorage.getItem('myOwner') || null; } catch (e) { /* storage blocked */ }
     addEventListener('hashchange', () => this.route());
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.themeTick++);
     try {
@@ -118,53 +147,69 @@ window.Core = {
     return h < 24 ? `${h} hr ${min % 60} min ago` : new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   },
 
-  // #/matchups[/season/mp] · #/matchup/season/mp/id · #/teams · #/league[/view] · #/history
+  // #/live[/season/mp] · #/matchup/season/mp/id · #/league/{standings,odds,power,deep,luck,...} · #/teams · #/team/owner
+  // #/moves/{waivers,injuries,trades,draft} · #/history[/swings]
   async route() {
     let parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    if (parts.length === 1 && OLD_PAGES[parts[0]]) parts = OLD_PAGES[parts[0]].split('/');
-    const [sec = 'matchups', a, b, c] = parts;
+    if (parts.length && OLD_PAGES[parts[0]] && !(parts[0] === 'matchups' && parts.length > 1)) {
+      parts = [...OLD_PAGES[parts[0]].split('/'), ...parts.slice(1)];
+    }
+    if (parts[0] === 'matchups') parts[0] = 'live';
+    if (parts[0] === 'league' && parts[1] === 'draft') parts = ['moves', 'draft'];
+    const [sec = 'live', a, b, c] = parts;
     if (sec === 'matchup' && a && b && c) {
       if (+a !== this.season) await this.selectSeason(+a);
-      Object.assign(this, { section: 'matchups', page: 'h2h', weekSel: +b, weekMid: +c });
+      Object.assign(this, { section: 'live', page: 'h2h', weekSel: +b, weekMid: +c });
       this.loadSwings();
-    } else if (sec === 'matchups') {
-      // a bare #/matchups always means "now": the live week if one is running
+    } else if (sec === 'live') {
+      // a bare #/live always means "now": the live week if one is running
       const target = a ? +a : (this.live?.active ? this.live.season : this.season);
       if (target !== this.season) await this.selectSeason(target);
-      Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
-    } else if (sec === 'swings') {
-      Object.assign(this, { section: 'matchups', page: 'swings' });
-      this.loadSwings();
-    } else if (sec === 'waivers') {
-      Object.assign(this, { section: 'matchups', page: 'waivers' });
-    } else if (sec === 'injuries') {
-      Object.assign(this, { section: 'matchups', page: 'injuries' });
+      Object.assign(this, { section: 'live', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
     } else if (sec === 'league') {
+      const view = a === 'deep' ? 'luck' : a;
+      if (view === 'power') {
+        Object.assign(this, { section: 'league', page: 'power' });
+        this.loadPower();
+      } else {
+        await this.seasonWithResults();
+        this.section = 'league';
+        this.page = ['standings', 'odds', 'luck', 'expected', 'coaching', 'cap'].includes(view) ? view : 'standings';
+        if (this.page === 'cap') this.loadAll();
+      }
+    } else if (sec === 'moves') {
+      const view = ['waivers', 'injuries', 'trades', 'draft'].includes(a) ? a : 'waivers';
+      Object.assign(this, { section: 'moves', page: view });
+      if (view === 'draft') { await this.seasonWithResults(); this.loadDraft(); }
+    } else if (sec === 'teams' || sec === 'team') {
       await this.seasonWithResults();
-      this.section = 'league';
-      this.page = LEAGUE_VIEWS.some((v) => v.id === a) ? a : 'standings';
-      if (this.page === 'cap') this.loadAll();
-      if (this.page === 'draft') this.loadDraft();
-    } else if (sec === 'power') {
-      Object.assign(this, { section: 'teams', page: 'power' });
-      this.loadPower();
-    } else if (sec === 'trades') {
-      Object.assign(this, { section: 'teams', page: 'trades' });
-    } else if (sec === 'teams') {
-      await this.seasonWithResults();
-      Object.assign(this, { section: 'teams', page: 'teams' });
-    } else if (sec === 'team' && a) {
-      await this.seasonWithResults();
-      const owner = decodeURIComponent(a);
+      const owner = sec === 'team' && a ? decodeURIComponent(a) : (this.myOwner || this.S?.teams.find((t) => t.team_id === this.teamSel)?.owner_id);
       const t = this.S?.teams.find((x) => x.owner_id === owner);
       Object.assign(this, { section: 'teams', page: 'team', teamOwner: owner, ownerSel: owner });
       if (t) this.teamSel = t.team_id;
     } else if (sec === 'history') {
-      Object.assign(this, { section: 'history', page: 'franchises' });
+      Object.assign(this, { section: 'history', page: a === 'swings' ? 'swings' : 'franchises' });
+      if (a === 'swings') this.loadSwings();
     } else {
-      Object.assign(this, { section: 'matchups', page: 'matchups', weekSel: this.defaultWeek });
+      Object.assign(this, { section: 'live', page: 'matchups', weekSel: this.defaultWeek });
     }
     scrollTo({ top: 0 });
+  },
+  // the sub-view pills for the current tab, and which one is active
+  get subnav() { return SUBNAV[this.section] || []; },
+  get subActive() { return this.subnav.find((v) => v.pages.includes(this.page))?.id; },
+  get subsub() { return SUBSUB[this.subActive] || []; },
+
+  // ---------- My team (saved in this browser): highlighted everywhere, pinned to the top of Live
+  setMyOwner(o) {
+    this.myOwner = o || null;
+    try { o ? localStorage.setItem('myOwner', o) : localStorage.removeItem('myOwner'); } catch (e) { /* storage blocked */ }
+  },
+  myTeamId(season = this.season) { return this.seasons[season]?.teams.find((t) => t.owner_id === this.myOwner)?.team_id ?? null; },
+  isMine(teamId, season = this.season) { return !!this.myOwner && this.team(teamId, season)?.owner_id === this.myOwner; },
+  get myTeamChoices() {
+    const cur = this.seasons[this.meta?.current_season]?.teams || this.S?.teams || [];
+    return [...cur].sort((a, b) => a.name.localeCompare(b.name));
   },
   go(hash) { location.hash = hash; },
   // stats pages need finished games: before week 1 of a new season ends, show the last season with results
@@ -191,7 +236,7 @@ window.Core = {
       this.teamSel = [...ts].sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99))[0]?.team_id;
     }
     this.luckTeam = 'all';
-    if (this.section === 'matchups') this.weekSel = this.defaultWeek;
+    if (this.section === 'live') this.weekSel = this.defaultWeek;
     // on a team page, follow the same franchise (owner) into the new season
     const mine = this.teamOwner && ts.find((t) => t.owner_id === this.teamOwner);
     if (mine) this.teamSel = mine.team_id;
@@ -215,9 +260,14 @@ window.Core = {
   wkDates(mp) { const c = this.cap(mp); return c ? `${fmt.date(c.start)} – ${fmt.date(c.end)}` : ''; },
   owner(id) { return this.history?.owners[id] ?? 'Unknown'; },
   get hasData() { return this.regWeeks.length > 0; },
+  // the one "last updated" shown site-wide: the newest refresh (live forecast when the season is on)
   get updated() {
-    if (!this.meta) return '';
-    return new Date(this.meta.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const t = [this.live?.updated_at, this.meta?.updated_at].filter(Boolean).sort().pop();
+    return t ? this.ago(t) : '';
+  },
+  get updatedExact() {
+    const t = [this.live?.updated_at, this.meta?.updated_at].filter(Boolean).sort().pop();
+    return t ? new Date(t).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
   },
 
   // ---------- identity

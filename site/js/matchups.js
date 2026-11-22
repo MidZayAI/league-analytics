@@ -70,6 +70,42 @@ window.Matchups = {
   },
   matchupHref(id, mp = this.weekSel) { return `#/matchup/${this.season}/${mp}/${id}`; },
 
+  // ---------- Live cards
+  // this week's games: my matchup pinned first
+  get liveCards() {
+    const M = this.isLiveWeek ? this.live.matchups : [];
+    return M.slice().sort((x, y) => this.hasMine(y) - this.hasMine(x));
+  },
+  get pastCards() { return this.weekGames.slice().sort((x, y) => this.hasMine(y) - this.hasMine(x)); },
+  hasMine(m) {
+    const ids = m.home ? [m.home.team_id, m.away.team_id] : [m.a.team_id, m.b.team_id];
+    return ids.some((t) => this.isMine(t)) ? 1 : 0;
+  },
+  // games in progress right now for one side
+  liveNow(s) { const now = this.live?.sp_now; return (s?.players || []).filter((p) => p.days.some((d) => d.sp === now && d.state === 'live')).length; },
+  liveNowAll(m) { return this.liveNow(m.home) + this.liveNow(m.away); },
+  // when the team behind is the favorite, say why: games left under the cap
+  favoredWhy(m) {
+    const [a, b] = [m.home, m.away];
+    const behind = a.pts < b.pts ? a : b.pts < a.pts ? b : null;
+    if (!behind || behind.win_prob <= 0.5) return '';
+    const ahead = behind === a ? b : a;
+    const short = (n) => n.split(' ')[0];
+    const g = (s) => Math.round(s.exp_games ?? s.rem_cap);
+    if (g(behind) > g(ahead)) {
+      return `${short(behind.name)} trails by ${fmt.n(ahead.pts - behind.pts)} but has ~${g(behind)} games left vs ~${g(ahead)}`;
+    }
+    return `${short(behind.name)} trails by ${fmt.n(ahead.pts - behind.pts)} but projects ${fmt.n(behind.proj - behind.pts)} more pts vs ${fmt.n(ahead.proj - ahead.pts)}`;
+  },
+  // how much this game moves a team's playoff odds (its own win vs lose odds)
+  stakeSwing(teamId) {
+    const s = this.stakesOf(teamId);
+    return s ? Math.round((s.playoff_w - s.playoff_l) * 100) : null;
+  },
+  scrollWeekIntoView(el) {
+    this.$nextTick(() => el.querySelector('.is-current')?.scrollIntoView({ inline: 'center', block: 'nearest' }));
+  },
+
   // ---------- head-to-head
   get h2hLive() { return this.isLiveWeek ? this.live.matchups.find((m) => m.matchup_id === this.weekMid) : null; },
   get h2hPast() { return this.isLiveWeek ? null : this.gamesFor(this.weekSel).find((g) => g.id === this.weekMid); },

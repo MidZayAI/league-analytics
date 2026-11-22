@@ -225,6 +225,23 @@ def attach_live(ms, season):
             m = by.get((s["mp"], int(mid)))
             if m and str(m["home"]) in probs:
                 m.setdefault("live", []).append([int(s["ts"]), probs[str(m["home"])]])
+    # one source of truth: each day's point = the live forecast the site showed first that day (ET),
+    # and the latest point of a week in progress = the current live forecast
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    for m in ms:
+        pts = m.get("live") or []
+        if not pts:
+            continue
+        first = {}
+        for ts, p in sorted(pts):
+            first.setdefault(datetime.fromtimestamp(ts, et).date().isoformat(), p)
+        for x in m["series"]:
+            if not x.get("final") and x["d"] in first:
+                x["p"] = round(first[x["d"]], 4)
+        if not m["result"]:
+            m["series"][-1]["p"] = round(sorted(pts)[-1][1], 4)
     return ms
 
 

@@ -109,6 +109,12 @@ window.Swings = {
       data = m.live.map(([t, p]) => [t * 1000, f(p)]);
       const fin = m.series[m.series.length - 1];
       if (fin.final) data.push([ts(fin.d), f(fin.p)]);
+      // a week in progress ends at the current live forecast (same number as the Live cards)
+      const lm = !m.result && this.live?.season === m.season && this.live?.mp === m.mp && this.live.matchups.find((x) => x.matchup_id === m.matchup_id);
+      if (lm) {
+        const t = Date.parse(this.live.updated_at);
+        if (!data.length || t > data[data.length - 1][0]) data.push([t, f(lm.home.win_prob)]);
+      }
       x = axis({ type: 'time', splitLine: { show: false }, axisLabel: { color: TOK('--muted'), fontSize: 11, formatter: (v) => new Date(v).toLocaleDateString('en-US', { weekday: 'short' }) } });
     } else {
       data = m.series.map((s, i) => [i, f(s.p)]);
