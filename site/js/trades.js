@@ -77,7 +77,7 @@ window.Trades = {
       xAxis: catAxis(dates.map((d) => fmt.date(d)), { boundaryGap: false }),
       yAxis: axis({ type: 'value' }),
       series: sides.map((s, i) => ({ type: 'line', name: s.name, data: s.so_far.cum.map((c) => c.pts), symbol: 'none',
-        lineStyle: { width: 2.5, color: this.tradeColor(i) }, itemStyle: { color: this.tradeColor(i) },
+        lineStyle: { width: 2.5, color: this.swColor(s.team_id) }, itemStyle: { color: this.swColor(s.team_id) },
         endLabel: { show: true, color: TOK('--ink2'), fontSize: 11, formatter: (p) => fmt.n(p.value, 0) } })),
     } };
   },
@@ -91,11 +91,11 @@ window.Trades = {
       const t = o.teams[s.team_id];
       if (!t) return;
       series.push({ type: 'line', name: `${s.name} · playoffs`, data: t.playoff, symbolSize: 6,
-        lineStyle: { width: 2, color: this.tradeColor(i) }, itemStyle: { color: this.tradeColor(i) },
+        lineStyle: { width: 2, color: this.swColor(s.team_id) }, itemStyle: { color: this.swColor(s.team_id) },
         markLine: series.length ? undefined : { silent: true, symbol: 'none', label: { formatter: 'Trade', color: TOK('--muted') },
           lineStyle: { color: TOK('--axis'), type: 'dashed' }, data: [{ xAxis: `Wk ${o.trade_mp}` }] } });
       series.push({ type: 'line', name: `${s.name} · title`, data: t.title, symbolSize: 5,
-        lineStyle: { width: 1.5, type: 'dashed', color: this.tradeColor(i) }, itemStyle: { color: this.tradeColor(i) } });
+        lineStyle: { width: 1.5, type: 'dashed', color: this.swColor(s.team_id) }, itemStyle: { color: this.swColor(s.team_id) } });
     });
     return { option: {
       ...base(), grid: { ...base().grid, top: 56, right: 16 },

@@ -55,11 +55,8 @@ window.Swings = {
     const w = this.swWeeks;
     this.swWeek = w.length ? w[w.length - 1].mp : null;
   },
-  swOpen(m) {
-    this.swSeason = m.season;
-    this.swWeek = m.mp;
-    this.$nextTick(() => document.getElementById(`sw-${m.season}-${m.mp}-${m.matchup_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  },
+  // a matchup's day-by-day chart lives on its page in Live
+  swOpen(m) { if (m) location.hash = `#/matchup/${m.season}/${m.mp}/${m.matchup_id}`; },
   swDramaLabel(m) {
     if (!m?.result) return 'In progress';
     return m.drama >= 50 ? `More dramatic than ${m.drama}% of matchups ever` : `Drama ${m.drama} / 100`;

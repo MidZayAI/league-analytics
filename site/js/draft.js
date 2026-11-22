@@ -15,7 +15,7 @@ window.Draft = {
     const p = this.drPick(pid, tid);
     return p ? `${label}: ${p.name} #${p.overall} → #${p.rank || '–'} (${p.spots > 0 ? '+' : ''}${p.spots})` : '';
   },
-  drGradeColor(g) { return TOK({ A: '--good', B: '--s1', C: '--ink2', D: '--s4', F: '--bad' }[g[0]] || '--ink2'); },
+  drGradeColor(g) { return TOK({ A: '--good', B: '--ink', C: '--ink2', D: '--warn', F: '--bad' }[g[0]] || '--ink2'); },
   get drSteals() { return (this.DR?.picks || []).slice().sort((a, b) => b.spots - a.spots).slice(0, 5); },
   get drBusts() { return (this.DR?.picks || []).slice().sort((a, b) => a.spots - b.spots).slice(0, 5); },
   // spots gained vs the league average, stacked by round group (rounds 1-3, 4-7, 8+)
@@ -26,7 +26,7 @@ window.Draft = {
     const keys = ['1-3', '4-7', '8+'];
     const avg = Object.fromEntries(keys.map((k) => [k, G.reduce((s, g) => s + g.by_round[k], 0) / G.length]));
     const rows = G.slice().sort((a, b) => a.vs_avg - b.vs_avg);
-    const colors = ['--s1', '--s2', '--s3'];
+    const colors = ['--k1', '--k3', '--k5'];
     return { option: {
       ...base(), grid: { ...base().grid, top: 30, right: 24 },
       legend: { ...base().legend, data: keys.map((k) => `Rounds ${k}`) },
@@ -132,11 +132,11 @@ window.Draft = {
         return `<b>${fmt.date(d)}</b>` + tipRow('Above replacement so far', fmt.signed(v, 0)) + (adds.length ? tipRow('Added', esc(adds.join(', '))) : ''); } },
       xAxis: axis({ type: 'time', splitLine: { show: false }, axisLabel: { color: TOK('--muted'), fontSize: 11, formatter: (v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) } }),
       yAxis: axis({ type: 'value' }),
-      series: [{ type: 'line', data: S.map(([d, v]) => [d + 'T12:00:00', v]), symbol: 'none', lineStyle: { width: 2.5, color: TOK('--s1') },
-        areaStyle: { color: TOK('--s1'), opacity: 0.1 },
+      series: [{ type: 'line', data: S.map(([d, v]) => [d + 'T12:00:00', v]), symbol: 'none', lineStyle: { width: 2.5, color: TOK('--data') },
+        areaStyle: { color: TOK('--data'), opacity: 0.1 },
         markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: TOK('--axis'), type: 'solid' }, data: [{ yAxis: 0 }] },
         markPoint: { silent: true, data: M.filter((m) => at[m[0]] != null).map((m) => ({ coord: [m[0] + 'T12:00:00', at[m[0]]], symbol: 'circle', symbolSize: 8,
-          itemStyle: { color: TOK('--s1'), borderColor: TOK('--surface'), borderWidth: 2 },
+          itemStyle: { color: TOK('--data'), borderColor: TOK('--surface'), borderWidth: 2 },
           label: { show: true, position: 'top', formatter: this.drLast(m[1]), color: TOK('--ink2'), fontSize: 10 } })) } }],
     } };
   },

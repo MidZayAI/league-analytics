@@ -45,12 +45,12 @@ const SECTIONS = [
 ];
 const SUBNAV = {
   league: [
-    { id: 'standings', label: 'Standings', href: '#/league/standings', pages: ['standings', 'odds'] },
+    { id: 'standings', label: 'Standings', href: '#/league/standings', pages: ['standings'] },
     { id: 'power', label: 'Power rankings', href: '#/league/power', pages: ['power'] },
-    { id: 'deep', label: 'Deep stats', href: '#/league/deep', pages: ['luck', 'expected', 'coaching', 'cap'] },
+    { id: 'deep', label: 'Deep stats', href: '#/league/deep', pages: ['deep'] },
   ],
   moves: [
-    { id: 'waivers', label: 'Waiver wire', href: '#/moves/waivers', pages: ['waivers', 'injuries'] },
+    { id: 'waivers', label: 'Waiver wire', href: '#/moves/waivers', pages: ['waivers'] },
     { id: 'trades', label: 'Trade analyzer', href: '#/moves/trades', pages: ['trades'] },
     { id: 'draft', label: 'Draft grades', href: '#/moves/draft', pages: ['draft'] },
   ],
@@ -61,9 +61,7 @@ const SUBNAV = {
 };
 // second-level pills inside a sub-view until those pages are merged (phase 2)
 const SUBSUB = {
-  standings: [{ id: 'standings', label: 'Table' }, { id: 'odds', label: 'Playoff odds' }],
-  deep: [{ id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' }, { id: 'coaching', label: 'Coaching' }, { id: 'cap', label: 'Games cap' }],
-  waivers: [{ id: 'waivers', label: 'Pickups' }, { id: 'injuries', label: 'Injuries' }],
+  deep: [{ id: 'luck', label: 'Luck & expected', href: '#/league/deep' }, { id: 'coach', label: 'Coaching & games cap', href: '#/league/deep/coach' }],
 };
 const LEAGUE_VIEWS = [
   { id: 'standings', label: 'Standings' }, { id: 'luck', label: 'Luck' }, { id: 'expected', label: 'Expected' },
@@ -167,19 +165,22 @@ window.Core = {
       if (target !== this.season) await this.selectSeason(target);
       Object.assign(this, { section: 'live', page: 'matchups', weekSel: b ? +b : this.defaultWeek });
     } else if (sec === 'league') {
-      const view = a === 'deep' ? 'luck' : a;
-      if (view === 'power') {
+      if (a === 'power') {
         Object.assign(this, { section: 'league', page: 'power' });
         this.loadPower();
       } else {
         await this.seasonWithResults();
         this.section = 'league';
-        this.page = ['standings', 'odds', 'luck', 'expected', 'coaching', 'cap'].includes(view) ? view : 'standings';
-        if (this.page === 'cap') this.loadAll();
+        const coach = ['coaching', 'cap'].includes(a) || (a === 'deep' && b === 'coach');
+        const deep = coach || ['deep', 'luck', 'expected'].includes(a);
+        this.page = deep ? 'deep' : 'standings';
+        if (deep) this.deepView = coach ? 'coach' : 'luck';
+        if (coach) this.loadAll();
       }
     } else if (sec === 'moves') {
-      const view = ['waivers', 'injuries', 'trades', 'draft'].includes(a) ? a : 'waivers';
+      const view = ['trades', 'draft'].includes(a) ? a : 'waivers';
       Object.assign(this, { section: 'moves', page: view });
+      if (a === 'injuries') this.injOpen = true;
       if (view === 'draft') { await this.seasonWithResults(); this.loadDraft(); }
     } else if (sec === 'teams' || sec === 'team') {
       await this.seasonWithResults();
@@ -199,6 +200,7 @@ window.Core = {
   get subnav() { return SUBNAV[this.section] || []; },
   get subActive() { return this.subnav.find((v) => v.pages.includes(this.page))?.id; },
   get subsub() { return SUBSUB[this.subActive] || []; },
+  get subsubActive() { return this.page === 'deep' ? this.deepView : this.page; },
 
   // ---------- My team (saved in this browser): highlighted everywhere, pinned to the top of Live
   setMyOwner(o) {

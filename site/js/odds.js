@@ -105,9 +105,9 @@ window.Odds = {
         yAxis: axis({ type: 'value', min: 0, max: 1, interval: 0.25, axisLabel: { color: TOK('--muted'), fontSize: 11, formatter: (v) => Math.round(v * 100) + '%' } }),
         series: [
           { type: 'line', name: 'Playoffs', data: h.playoff, symbol: 'circle', symbolSize: 7, showSymbol: h.after.length < 25,
-            lineStyle: { width: 2, color: TOK('--s1') }, itemStyle: { color: TOK('--s1'), borderColor: TOK('--surface'), borderWidth: 2 } },
+            lineStyle: { width: 2.5, color: this.swColor(t.team_id) }, itemStyle: { color: this.swColor(t.team_id), borderColor: TOK('--surface'), borderWidth: 2 } },
           { type: 'line', name: 'Title', data: h.title, symbol: 'circle', symbolSize: 7, showSymbol: h.after.length < 25,
-            lineStyle: { width: 2, color: TOK('--s2') }, itemStyle: { color: TOK('--s2'), borderColor: TOK('--surface'), borderWidth: 2 } },
+            lineStyle: { width: 2, type: 'dashed', color: this.swColor(t.team_id) }, itemStyle: { color: this.swColor(t.team_id), borderColor: TOK('--surface'), borderWidth: 2 } },
         ],
       },
       table: { cols: [{ label: 'Week' }, { label: 'Playoffs', num: 1 }, { label: 'Bye', num: 1 }, { label: 'Title', num: 1 }],
