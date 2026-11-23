@@ -333,6 +333,13 @@ def main():
     raw_state = model.raw_state(CURRENT, sp_now)
     P = pj.PARAMS
     exp_ctx = expected.SeasonContext(CURRENT, t, model)
+    game_mu = expected.logged_game_mu(dates)  # each game's pre-game projection (lines + Sleeper + model)
+    hist_weeks = []
+    for s_ in range(CURRENT - 5, CURRENT):
+        f_ = ROOT / "site" / "data" / f"season_{s_}.json"
+        if f_.exists():
+            hist_weeks += [w for w in json.loads(f_.read_text(encoding="utf-8")).get("weeks", []) if w.get("result") and not w.get("playoff")]
+    step_hist = expected.step_history(hist_weeks)
     done_days = [sp for sp in week if sp < sp_now]
     games_now = nba_game_status(dates[sp_now])  # today's NBA games: not started / in progress / final
 
@@ -459,13 +466,21 @@ def main():
             # finished days + today's games that are already final (in-progress games stay out)
             final_today = {pro for pro, g in games_now.items() if g["state"] == "post"}
             res = expected.week_breakdown(exp_ctx, tid, int(mp), week, int(cap_row.cap), rng,
-                                          done_days + [sp_now], (sp_now, final_today))
+                                          done_days + [sp_now], (sp_now, final_today), game_mu=game_mu, cv=model.cv)
             so_far = None
-            if res and (done_days or final_today):
+            if res:
                 so_far, players = res
                 so_far["hot"], so_far["cold"] = expected.top_players(players)
                 so_far["days_done"] = len(done_days)
                 so_far["today_final_games"] = sum(1 for g in games_now.values() if g["state"] == "post") // 2
+                # end at the scoreboard: games in progress (not final yet) are their own step
+                so_far["in_progress"] = round(float(cur) - so_far["actual"], 1)
+                so_far["live_games"] = sum(1 for g in team_out[tid]["grid"] for d in g["days"] if d.get("sp") == sp_now and d.get("state") == "live")
+                # where this week sits among every finished team-week on record (per counted game)
+                gp_ = max(so_far["games_used"], 1)
+                so_far["pct"] = {k: expected.percentile(step_hist[k], so_far[k] / gp_) for k in ("availability", "moves", "lineup")}
+                so_far["pct"]["perf"] = so_far.get("pct_perf")
+                so_far["pct"]["luck"] = expected.percentile(step_hist["luck"], (so_far["availability"] + so_far["breakouts"] + so_far["hot_cold"]) / gp_)
             sides.append({"team_id": tid, "name": names.get(tid), "pts": cur, "gp_used": gp_used,
                           "cap": int(cap_row.cap), "rem_cap": rem_cap,
                           "avail_games": float(cands.p.sum()), "exp_games": float(games.mean()),

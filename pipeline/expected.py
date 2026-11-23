@@ -61,11 +61,40 @@ class SeasonContext:
         return self._raw[day]
 
 
-def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_day=None):
+def logged_game_mu(dates):
+    """{(player_id, sp): pre-game projection} from the per-game log (data/history/gameproj_{season}.json):
+    the blend of our model, Sleeper and the DraftKings line, with the weights fit to graded games.
+    dates: {sp: date}. Logged numbers are frozen at tip-off, so nothing uses hindsight."""
+    import json
+    import gameproj
+    if not gameproj.LOG.exists():
+        return {}
+    log = json.loads(gameproj.LOG.read_text(encoding="utf-8"))
+    w = gameproj.load_weights()
+    sp_of = {d.isoformat(): sp for sp, d in dates.items()}
+    out = {}
+    for day, players in log.items():
+        sp = sp_of.get(day)
+        if sp is None:
+            continue
+        for aid, (model, sleeper, mk) in players.items():
+            if mk is not None and sleeper is not None:
+                v = float(np.dot(w["market"], [model, sleeper, mk]))
+            elif sleeper is not None:
+                v = float(np.dot(w["nomarket"], [model, sleeper]))
+            else:
+                v = float(model)
+            out[(int(aid), sp)] = max(v, 1.0)
+    return out
+
+
+def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_day=None, game_mu=None, cv=None):
     """Breakdown for one team-week. done_days limits it to the days played so far (live view);
     then E1/E2 get the same number of games the team has actually used so far.
     partial_day=(sp, pro_team_ids): on that day (today) only games of those NBA teams count, i.e.
-    games that are final; games still in progress stay out so half a game isn't judged as a whole one."""
+    games that are final; games still in progress stay out so half a game isn't judged as a whole one.
+    game_mu: {(player_id, sp): pre-game projection for that game} (betting lines + projections); games
+    not in it use the week-start model. cv: game-to-game spread, for the luck percentile."""
     td = ctx.by_team_mp.get((tid, mp))
     if td is None or td.empty:
         return None
@@ -78,6 +107,10 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
     est = ctx.model.finish(ctx.raw(start), pids)
     est["mu"] = est.mu.clip(lower=1.0)  # same floor as simulate_team
     mu, p = est.mu.to_dict(), est.p.to_dict()
+    gm = game_mu or {}
+
+    def m(pid, sp):
+        return gm.get((int(pid), int(sp)), mu[pid])
 
     done = list(week_days if done_days is None else done_days)
 
@@ -92,7 +125,7 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
         return pd.DataFrame(rows, columns=["sp", "mu", "p", "player_id"])
 
     # E0: pregame, whole week; per-day expectation lets the live view take just the days played
-    c0 = pd.DataFrame([(sp, mu[r.player_id], p[r.player_id], r.player_id, r.pro)
+    c0 = pd.DataFrame([(sp, m(r.player_id, sp), p[r.player_id], r.player_id, r.pro)
                        for r in roster0.itertuples() for sp in week_days if r.pro in ctx.games.get(sp, ())],
                       columns=["sp", "mu", "p", "player_id", "pro"])
     _, s0 = expected_value(c0, cap, E0_SIMS, rng)
@@ -105,16 +138,17 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
         for sp in done:
             if r.pro in ctx.games.get(sp, ()) and keep(sp, r.pro):
                 gp = ctx.played.get((sp, r.player_id))
-                rows.append((sp, mu[r.player_id], p[r.player_id] if gp is None else float(gp > 0), r.player_id))
+                rows.append((sp, m(r.player_id, sp), p[r.player_id] if gp is None else float(gp > 0), r.player_id))
     e1, _ = expected_value(cands(rows), cap_eff, E1_SIMS, rng)
 
     # E2: actual daily rosters, real availability, best use of the cap by projection
     have = td[td.sp.isin(done) & (td.gp > 0)].drop_duplicates(["sp", "player_id"])
-    e2, _ = expected_value(cands([(r.sp, mu[r.player_id], 1.0, r.player_id) for r in have.itertuples()]),
+    e2, _ = expected_value(cands([(r.sp, m(r.player_id, r.sp), 1.0, r.player_id) for r in have.itertuples()]),
                            cap_eff, 1, rng)
 
     # E3 / actual: the games that counted
-    cg = counted.assign(mu=counted.player_id.map(mu), lvl=counted.player_id.map(ctx.season_avg))
+    cg = counted.assign(mu=[m(pid, sp) for pid, sp in zip(counted.player_id, counted.sp)],
+                        lvl=counted.player_id.map(ctx.season_avg))
     e3, e4, actual = float(cg.mu.sum()), float(cg.lvl.sum()), float(cg.pts.sum())
     players = cg.groupby(["player_id", "name"]).agg(games=("gp", "size"), pts=("pts", "sum"), exp=("mu", "sum"),
                                                     lvl=("lvl", "sum")).reset_index()
@@ -126,7 +160,83 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
            "days_done": len(done), "games_used": int(counted.gp.sum())}
     parts = out["e0"] + out["availability"] + out["moves"] + out["lineup"] + out["breakouts"] + out["hot_cold"]
     assert abs(parts - actual) < 1e-6, (tid, mp, parts, actual)
+
+    if game_mu is not None:  # live view: the players behind each step
+        name = dict(zip(td.player_id, td.name))
+        in0 = set(roster0.player_id)
+        # missed games: week-start players sitting out games their NBA team played
+        c0 = c0.assign(start=s0)
+        missed = {}
+        for r in c0[in_scope].itertuples():
+            if ctx.played.get((r.sp, r.player_id)) == 0:
+                x = missed.setdefault(int(r.player_id), {"id": int(r.player_id), "name": name.get(r.player_id), "games": 0, "lost": 0.0})
+                x["games"] += 1
+                x["lost"] += float(r.mu * r.start)
+        out["missed"] = sorted(missed.values(), key=lambda x: -x["lost"])[:4]
+        # roster moves: who came in (games played, points that counted) and who went out
+        by_p = counted.groupby("player_id").pts.sum().to_dict()
+        added = {}
+        for r in have.itertuples():
+            if r.player_id not in in0:
+                x = added.setdefault(int(r.player_id), {"id": int(r.player_id), "name": name.get(r.player_id), "games": 0,
+                                                        "pts": float(by_p.get(r.player_id, 0.0))})
+                x["games"] += 1
+        on_team = set(zip(td.sp, td.player_id))
+        dropped = {}
+        for r in c0[in_scope].itertuples():
+            if (r.sp, r.player_id) not in on_team:
+                x = dropped.setdefault(int(r.player_id), {"id": int(r.player_id), "name": name.get(r.player_id), "games": 0})
+                x["games"] += 1
+        out["added"] = sorted(added.values(), key=lambda x: -x["pts"])[:3]
+        out["dropped"] = sorted(dropped.values(), key=lambda x: -x["games"])[:3]
+        # lineup & cap: games played that didn't count
+        bench = td[td.sp.isin(done) & (td.gp > 0) & ~td.counted]
+        bl = {}
+        for r in bench.itertuples():
+            x = bl.setdefault(int(r.player_id), {"id": int(r.player_id), "name": r.name, "games": 0, "pts": 0.0, "proj": 0.0})
+            x["games"] += 1
+            x["pts"] += float(r.pts)
+            x["proj"] += float(m(r.player_id, r.sp))
+        out["benched"] = sorted(bl.values(), key=lambda x: -x["pts"])[:4]
+        # every player: counted games vs the pre-game projection of those games
+        tab = []
+        for (pid, nm), g in cg.groupby(["player_id", "name"]):
+            b = bl.get(int(pid), {})
+            tab.append({"id": int(pid), "name": nm, "games": int(len(g)), "pts": float(g.pts.sum()), "proj": round(float(g.mu.sum()), 1),
+                        "bench_games": b.get("games", 0), "bench_pts": b.get("pts", 0.0),
+                        "lined": int(sum((int(pid), int(sp)) in gm for sp in g.sp))})
+        for pid, b in bl.items():
+            if pid not in {t["id"] for t in tab}:
+                tab.append({"id": pid, "name": b["name"], "games": 0, "pts": 0.0, "proj": 0.0, "bench_games": b["games"], "bench_pts": b["pts"], "lined": 0})
+        out["players"] = sorted(tab, key=lambda x: (-x["pts"], -x["bench_pts"]))
+        out["lined_games"] = int(sum(t["lined"] for t in tab))
+        # luck percentile for points vs projection: the chance of doing this well or worse
+        if cv and len(cg):
+            sd = np.sqrt(np.sum(np.maximum(6.0, cv * cg.mu.to_numpy(float)) ** 2))
+            from math import erf, sqrt
+            out["pct_perf"] = round(0.5 * (1 + erf((actual - e3) / sd / sqrt(2))), 3)
     return out, players
+
+
+def step_history(seasons_weeks):
+    """Per-game step values of every finished team-week on record: {step: sorted list}."""
+    h = {"availability": [], "moves": [], "lineup": [], "luck": []}
+    for w in seasons_weeks:
+        gp = w.get("gp") or 0
+        if gp <= 0 or w.get("availability") is None:
+            continue
+        for k in ("availability", "moves", "lineup"):
+            h[k].append(w[k] / gp)
+        h["luck"].append((w["availability"] + w["breakouts"] + w["hot_cold"]) / gp)
+    return {k: sorted(v) for k, v in h.items()}
+
+
+def percentile(sorted_vals, v):
+    if not sorted_vals or v is None:
+        return None
+    import bisect
+    lo, hi = bisect.bisect_left(sorted_vals, v), bisect.bisect_right(sorted_vals, v)
+    return round((lo + hi) / 2 / len(sorted_vals), 3)
 
 
 def top_players(players, n=3):
