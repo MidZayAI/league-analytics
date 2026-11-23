@@ -95,6 +95,12 @@ def fetch_season(season, force=False):
             return json.loads(path.read_text(encoding="utf-8"))
     weights = scoring_weights()
     ids = athlete_ids(season)
+    # a season before the league's records: also everyone who played the following season, since
+    # today's rosters miss players who have since retired
+    nxt = OUT / str(season + 1) / "logs.json"
+    if nxt.exists():
+        for aid, a in json.loads(nxt.read_text(encoding="utf-8")).items():
+            ids.setdefault(int(aid), {"name": a.get("name"), "pos": a.get("pos")})
 
     def one(aid):
         g = get(LOG.format(aid), {"season": season})

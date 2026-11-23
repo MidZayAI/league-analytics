@@ -57,6 +57,26 @@ def load_ranks(season):
     return pd.Series({int(k): v for k, v in data.items()}, dtype=float)
 
 
+def nba_prior(season):
+    """{player_id: FP per game} over a whole NBA regular season (10+ games), from ESPN's public logs."""
+    import nba_logs
+    out = {}
+    for aid, a in nba_logs.load(season).items():
+        g = [fp for _, _, _, mins, fp in a["games"] if mins and mins > 0]
+        if len(g) >= 10:
+            out[int(aid)] = float(np.mean(g))
+    return pd.Series(out, dtype=float)
+
+
+def draft_ranks(season):
+    """The league's draft order as a preseason rank (player_id -> overall pick)."""
+    path = RAW / str(season) / "draft.json"
+    if not path.exists():
+        return pd.Series(dtype=float)
+    picks = json.loads(path.read_text(encoding="utf-8")).get("picks", [])
+    return pd.Series({int(p["playerId"]): float(p["overallPickNumber"]) for p in picks if p.get("playerId")}, dtype=float)
+
+
 class HistoryModel:
     """Player state as of the start of any past day, from the league's own daily data."""
 
@@ -75,7 +95,14 @@ class HistoryModel:
         self.cv = fit_cv(played)
         self._by_season = {s: g for s, g in self.G.groupby("season")}
         self.ranks = {s: load_ranks(s) for s in tables_by_season}
+        # no ESPN preseason ranks (2021-22): the league's own draft order stands in for them
+        for s in tables_by_season:
+            if self.ranks[s].empty:
+                self.ranks[s] = draft_ranks(s)
         self.rank_fit = self._fit_rank_prior()
+        # last season's FP/g for every NBA player (ESPN public game logs, this league's scoring),
+        # whether or not anyone in the league rostered him: the main prior
+        self.nba_prev = {s: nba_prior(s - 1) for s in tables_by_season}
 
     def _fit_rank_prior(self):
         """points per game ~ a + b*ln(preseason rank), fit on players whose last season we know."""
@@ -110,13 +137,14 @@ class HistoryModel:
         out = out.join(pd.DataFrame({"opps": w.groupby("player_id").size(),
                                      "played": w[w.gp > 0].groupby("player_id").size()}), how="outer")
         prev = self.season_mean.xs(season - 1, level="season") if season - 1 in self._by_season else None
-        if prev is not None:
-            prior = prev[prev["size"] >= 10]["mean"]
-            # include last season's players who haven't appeared yet this season (week 1, new pickups)
-            out = out.reindex(out.index.union(prior.index))
-            out["prior"] = out.index.map(prior)
-        else:
-            out["prior"] = np.nan
+        league_prior = prev[prev["size"] >= 10]["mean"] if prev is not None else pd.Series(dtype=float)
+        nba = self.nba_prev.get(season, pd.Series(dtype=float))
+        # the league's own data first (tested best where it exists); NBA-wide last season fills the gaps:
+        # the league's first season on record and players nobody in the league rostered
+        prior = league_prior.combine_first(nba)
+        # include last season's players who haven't appeared yet this season (week 1, new pickups)
+        out = out.reindex(out.index.union(prior.index))
+        out["prior"] = out.index.map(prior) if len(prior) else np.nan
         # no usable last season (rookies, missed year): start from the preseason rank instead
         ranked = self.ranks.get(season, pd.Series(dtype=float)).index
         out = out.reindex(out.index.union(ranked))

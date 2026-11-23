@@ -28,7 +28,7 @@ from simulate import simulate_team, win_prob  # noqa: E402
 HIST = ROOT / "data" / "history"
 OUT = ROOT / "site" / "data" / "swings.json"
 SIMS = 3000
-VERSION = 2
+VERSION = 3  # 3: NBA-wide priors (2020-21 logs)
 IR_SLOT = 13
 FLIP_BAND = 0.02
 SHRINK = 8                # clutch grade: matchups of "average" added to every team's record          # a lead change has to cross 50% by more than this

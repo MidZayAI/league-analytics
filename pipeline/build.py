@@ -101,7 +101,7 @@ def coach_cached(season, t):
 
 
 def expected_cached(season, t, model):
-    path = TIDY / f"expected_v3_{season}.pkl"  # v2: per-step detail lists, betting-line projections where logged
+    path = TIDY / f"expected_v4_{season}.pkl"  # v4: NBA-wide priors; per-step detail lists, betting lines where logged
     if season != CURRENT and path.exists():
         return pd.read_pickle(path)
     dates = dict(zip(t["calendar"].sp, t["calendar"].date))
