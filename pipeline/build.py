@@ -158,6 +158,74 @@ def _num(v):
     return None if v is None or (isinstance(v, float) and math.isnan(v)) else v
 
 
+STEP_KEYS = ("who", "moves", "lineup", "perf", "luck", "decisions")
+
+
+def _per_game(r):
+    gp = max(float(r["gp"] or 0), 1.0)
+    who, perf = r["availability"] / gp, (r["breakouts"] + r["hot_cold"]) / gp
+    mv, lu = r["moves"] / gp, r["lineup"] / gp
+    return {"who": who, "moves": mv, "lineup": lu, "perf": perf, "luck": who + perf, "decisions": mv + lu}
+
+
+def _rank_rows(rows):
+    """Two percentile sets per row: vs every row of the kind ('all'), and after removing that season's
+    league average per game ('adj', so a heavy-injury season doesn't count against everyone)."""
+    vals = [_per_game(r) for r in rows]
+    by_season = {}
+    for r, v in zip(rows, vals):
+        by_season.setdefault(r["season"], []).append(v)
+    mean = {s: {k: float(np.mean([v[k] for v in vs])) for k in STEP_KEYS} for s, vs in by_season.items()}
+    adj = [{k: v[k] - mean[r["season"]][k] for k in STEP_KEYS} for r, v in zip(rows, vals)]
+    srt = {k: sorted(v[k] for v in vals) for k in STEP_KEYS}
+    srt_adj = {k: sorted(v[k] for v in adj) for k in STEP_KEYS}
+    for r, v, a in zip(rows, vals, adj):
+        r["all"] = {k: expected.percentile(srt[k], v[k]) for k in STEP_KEYS}
+        r["adj"] = {k: expected.percentile(srt_adj[k], a[k]) for k in STEP_KEYS}
+    return rows
+
+
+def write_ranks(built):
+    """site/data/ranks.json: every finished regular-season team-season and team-week with step points
+    and percentiles (History > Luck & skill ranks)."""
+    ok = lambda v: v is not None and not (isinstance(v, float) and math.isnan(v))
+    weeks, seasons = [], []
+    for s, b in built.items():
+        w, rows = b[1], b[2]
+        if "availability" not in w:
+            continue
+        name = dict(zip(rows.team_id, rows.name))
+        owner = dict(zip(rows.team_id, rows.owner_id))
+        reg = w[~w.playoff & w.result.notna()]
+        good = [r for r in reg.to_dict("records")
+                if all(ok(r.get(k)) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")) and r["gp"] > 0]
+        for r in good:
+            weeks.append({"season": s, "mp": int(r["mp"]), "team_id": int(r["team_id"]), "owner_id": owner.get(r["team_id"]),
+                          "name": name.get(r["team_id"]), "opp_id": int(r["opp_id"]) if ok(r.get("opp_id")) else None,
+                          "matchup_id": int(r["matchup_id"]), "pts": r["pts"], "opp_pts": r["opp_pts"], "result": r["result"],
+                          "gp": float(r["gp"]), "lined": int(r.get("lined_games") or 0) if ok(r.get("lined_games")) else 0,
+                          **{k: round(float(r[k]), 1) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold")}})
+        tot = {}
+        for r in good:
+            t = tot.setdefault(int(r["team_id"]), {k: 0.0 for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")} | {"weeks": 0, "lined": 0})
+            for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp"):
+                t[k] += float(r[k])
+            t["weeks"] += 1
+            t["lined"] += int(r.get("lined_games") or 0) if ok(r.get("lined_games")) else 0
+        for row in rows.to_dict("records"):
+            t = tot.get(int(row["team_id"]))
+            if not t:
+                continue
+            seasons.append({"season": s, "team_id": int(row["team_id"]), "owner_id": row["owner_id"], "name": row["name"],
+                            "w": int(row["w"]), "l": int(row["l"]), "t": int(row["t"] or 0), "seed": _num(row.get("seed")),
+                            "rank_final": _num(row.get("rank_final")), "champion": bool(row.get("champion")),
+                            "runner_up": bool(row.get("runner_up")), "complete": bool(b[0]["complete"]),
+                            **{k: round(t[k], 1) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")},
+                            "weeks": t["weeks"], "lined": t["lined"]})
+    write("ranks.json", {"seasons": _rank_rows(seasons), "weeks": _rank_rows(weeks)})
+    print(f"ranks: {len(seasons)} team-seasons, {len(weeks)} team-weeks")
+
+
 def add_breakdown_percentiles(built):
     """Percentile of every step for every finished team-week (per counted game, vs every team-week on
     record) and a season roll-up per team (vs every team-season), the same scale the live card uses."""
@@ -255,6 +323,10 @@ def main():
                  "x_w", "x_l", "flips_won", "flips_lost", "breakdown"]
 
     add_breakdown_percentiles(built)
+    try:  # History > Luck & skill ranks; never fails the refresh
+        write_ranks(built)
+    except Exception as e:
+        print(f"ranks skipped: {e}")
 
     for s, (t, w, rows, coach, caps, swap, exp_players) in built.items():
         rows = rows.assign(owner_name=rows.owner_id.map(names), logo=rows.logo.map(logos.localize))

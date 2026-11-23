@@ -2822,6 +2822,86 @@
 
     </div>
 
+    <!-- ============ LUCK & SKILL RANKS ============ -->
+    <section x-show="page === 'ranks'" class="space-y-4">
+      <div>
+        <div class="label">Every team since 2021-22</div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2">Luck &amp; skill ranks
+          <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="How these ranks work">i</button><span class="pop" x-show="o" x-text="glossary.ranks"></span></span></h1>
+      </div>
+      <div class="card text-sm text-ink2" x-show="!ranksData">Loading…</div>
+      <template x-if="ranksData">
+      <div class="space-y-3">
+        <div class="flex flex-wrap gap-2 items-center">
+          <div class="seg">
+            <button :class="rkKind === 'seasons' && 'active'" @click="rkKind = 'seasons'">Seasons</button>
+            <button :class="rkKind === 'weeks' && 'active'" @click="rkKind = 'weeks'">Weeks</button>
+          </div>
+          <div class="seg">
+            <button :class="rkMode === 'all' && 'active'" @click="rkMode = 'all'">All-time</button>
+            <button :class="rkMode === 'adj' && 'active'" @click="rkMode = 'adj'">Adjusted for season</button>
+          </div>
+          <select class="select !py-1.5" x-model="rkTeam" aria-label="Team">
+            <option value="all">All teams</option>
+            <template x-for="t in rkTeams" :key="t.id"><option :value="t.id" x-text="t.name"></option></template>
+          </select>
+          <select class="select !py-1.5" x-model="rkSeason" aria-label="Season">
+            <option value="all">All seasons</option>
+            <template x-for="s in rkSeasons" :key="s"><option :value="String(s)" x-text="fmt.seasonLabel(s)"></option></template>
+          </select>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="week-chip" :class="rkSort === 'luck' && !rkAsc && 'active'" @click="rkPreset('luck')">Luckiest</button>
+          <button class="week-chip" :class="rkSort === 'luck' && rkAsc && 'active'" @click="rkPreset('luck', true)">Unluckiest</button>
+          <button class="week-chip" :class="rkSort === 'decisions' && !rkAsc && 'active'" @click="rkPreset('decisions')">Best decisions</button>
+          <button class="week-chip" :class="rkSort === 'decisions' && rkAsc && 'active'" @click="rkPreset('decisions', true)">Worst decisions</button>
+        </div>
+        <div class="text-[12.5px] text-ink2" x-text="(rkMode === 'all' ? `Compared with every team-${rkKind === 'weeks' ? 'week' : 'season'} since 2021-22.` : `Compared after removing each season's league average, so injury-heavy or hot-projection seasons don't count for or against anyone.`) + ' Percentiles per game played: 50 = typical, 90+ = top 10%. Tap a column to sort.'"></div>
+
+        <div class="card !p-0 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="tbl league-tbl">
+              <thead><tr>
+                <th class="!pl-4">Team</th>
+                <th class="hidden md:table-cell">Record</th>
+                <template x-for="c in rankCols" :key="c.key">
+                  <th class="num cursor-pointer select-none hover:text-ink" :title="c.info" @click="rkSortBy(c.key)" :class="[rkSort === c.key && '!text-ink', c.strong && 'font-bold']">
+                    <span class="underline decoration-dotted underline-offset-4" style="text-decoration-color: var(--axis)" x-text="c.label"></span><span class="ml-0.5" x-show="rkSort === c.key" x-text="rkAsc ? '↑' : '↓'"></span>
+                  </th>
+                </template>
+              </tr></thead>
+              <tbody>
+                <template x-for="(r, i) in rkShown" :key="r.season + '-' + (r.mp || 0) + '-' + r.team_id">
+                  <tr class="cursor-pointer" @click="rkOpen(r)">
+                    <td class="!pl-4">
+                      <div class="flex items-center gap-2.5 min-w-[170px]" :style="r.owner_id === myOwner ? 'box-shadow: inset 3px 0 0 var(--s1); margin-left: -16px; padding-left: 13px' : ''">
+                        <span class="w-6 text-right text-[12px] text-muted num" x-text="i + 1"></span>
+                        <img class="logo w-7 h-7" :src="logoOf(r.team_id, r.season)" alt="" loading="lazy" @error="$el.src = avatarOf(r.team_id, r.season)">
+                        <span class="min-w-0">
+                          <span class="flex items-center gap-1.5"><span class="block font-semibold truncate max-w-[150px]" x-text="r.name"></span><span class="you" x-show="r.owner_id === myOwner">YOU</span></span>
+                          <span class="block text-[12px] text-muted" x-text="fmt.seasonLabel(r.season) + (r.lined ? ' · betting lines' : '')"></span>
+                          <span class="block md:hidden text-[12px] text-ink2 truncate max-w-[160px]" x-text="rkFinish(r)"></span>
+                        </span>
+                      </div>
+                    </td>
+                    <td class="hidden md:table-cell text-[12.5px] text-ink2 whitespace-nowrap" x-text="rkFinish(r)"></td>
+                    <template x-for="c in rankCols" :key="c.key">
+                      <td class="num" :style="rkCell(r[rkMode][c.key])">
+                        <div class="font-bold" :class="c.strong ? 'text-[15px]' : 'text-[14px]'" x-text="r[rkMode][c.key] == null ? '–' : Math.round(r[rkMode][c.key] * 100)"></div>
+                        <div class="text-[12px] text-muted" x-text="`${fmt.signed(c.raw(r), 0)} pts`"></div>
+                      </td>
+                    </template>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="text-[12px] text-muted" x-show="rkRows.length > rkShown.length" x-text="`Showing the top ${rkShown.length} of ${rkRows.length}. Sort the other way or filter to see the rest.`"></div>
+      </div>
+      </template>
+    </section>
+
     <!-- ============ HISTORY ============ -->
     <section x-show="page === 'franchises'" class="space-y-5">
       <div>
@@ -2971,12 +3051,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=30780f8e30"></script>
+<script src="js/core.js?v=839d2344df"></script>
 <script src="js/legacy.js?v=edcef3148f"></script>
 <script src="js/matchups.js?v=23d903c700"></script>
 <script src="js/teams.js?v=2d70216709"></script>
 <script src="js/league.js?v=6a0a3b75f0"></script>
-<script src="js/history.js?v=428d3cc680"></script>
+<script src="js/history.js?v=9f29adadf5"></script>
 <script src="js/odds.js?v=e59d209d77"></script>
 <script src="js/injuries.js?v=2adf4039ca"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>
@@ -2984,7 +3064,7 @@
 <script src="js/draft.js?v=bcc2493642"></script>
 <script src="js/swings.js?v=92196977dc"></script>
 <script src="js/power.js?v=f25b32cce9"></script>
-<script src="js/app.js?v=2802ed87b4"></script>
+<script src="js/app.js?v=4954830ef9"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </body>
 </html>
