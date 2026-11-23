@@ -107,10 +107,9 @@ window.Matchups = {
   },
 
   // ---------- week breakdown (live): expected -> four plain steps -> tonight -> the scoreboard
-  sfScored(s) { const e = s?.expected_so_far; return e ? e.actual + (e.in_progress || 0) : null; },
+  sfScored(e) { return e ? e.actual + (e.in_progress || 0) : null; },
   sfShort(n) { const p = String(n || '').split(' ').filter((w) => !/^(jr\.?|sr\.?|ii|iii|iv)$/i.test(w)); return p.slice(-1)[0] || n; },
-  sfSteps(s) {
-    const e = s?.expected_so_far;
+  sfSteps(e) {
     if (!e) return [];
     const L = (x) => this.sfShort(x.name);
     const perf = (e.players || []).filter((p) => p.games).map((p) => ({ ...p, d: p.pts - p.proj }));
@@ -134,17 +133,22 @@ window.Matchups = {
       val: e.in_progress, pct: null, kind: 'live', why: e.live_games ? `${e.live_games} game${e.live_games > 1 ? 's' : ''} live` : 'Not final yet' });
     return steps;
   },
-  sfPctText(st) {
+  sfPctText(st, unit = 'weeks') {
     if (st.pct == null) return '';
     const n = Math.round(st.pct * 100);
-    return st.kind === 'luck' ? `luckier than ${n}% of weeks` : `better than ${n}% of weeks`;
+    return st.kind === 'luck' ? `luckier than ${n}% of ${unit}` : `better than ${n}% of ${unit}`;
+  },
+  // where the expectation came from: betting lines where logged, our projection model otherwise
+  sfSource(e, unit = 'week') {
+    if (!e) return '';
+    return e.lined_games ? `${e.lined_games} of ${e.games_used} games judged on the betting line`
+      : `Expected from our projection model (no betting lines that ${unit})`;
   },
   sfPctColor(p) { return p == null ? 'var(--muted)' : p >= 0.6 ? 'var(--good)' : p <= 0.4 ? 'var(--bad)' : 'var(--ink2)'; },
-  sfChart(s) {
+  sfChart(e) {
     void this.themeTick;
-    const e = s?.expected_so_far;
     if (!e) return null;
-    const steps = this.sfSteps(s);
+    const steps = this.sfSteps(e);
     const cats = ['Expected', ...steps.map((x) => x.label), 'Scored'];
     const lift = [], up = [], down = [], ends = [];
     let run = e.e0;
@@ -155,8 +159,8 @@ window.Matchups = {
       if (x.val >= 0) { up.push(x.val); down.push(null); } else { up.push(null); down.push(-x.val); }
       run = next;
     });
-    lift.push(0); up.push(null); down.push(null); ends.push(this.sfScored(s));
-    const vals = [e.e0, this.sfScored(s), ...lift.filter((v) => v > 0)];
+    lift.push(0); up.push(null); down.push(null); ends.push(this.sfScored(e));
+    const vals = [e.e0, this.sfScored(e), ...lift.filter((v) => v > 0)];
     const lo = Math.floor(Math.min(...vals) * 0.96 / 50) * 50;
     const hidden = { color: 'transparent' };
     return { option: {
@@ -164,7 +168,7 @@ window.Matchups = {
       tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (ps) => {
         const i = ps[0].dataIndex;
         if (i === 0) return `<b>Expected</b>` + tipRow('Points', fmt.n(e.e0));
-        if (i === cats.length - 1) return `<b>Scored</b>` + tipRow('Points', fmt.n(this.sfScored(s)));
+        if (i === cats.length - 1) return `<b>Scored</b>` + tipRow('Points', fmt.n(this.sfScored(e)));
         const x = steps[i - 1];
         return `<b>${x.label}</b>` + tipRow('Points', fmt.signed(x.val, 0)) + (x.pct != null ? tipRow('Percentile', Math.round(x.pct * 100)) : ''); } },
       xAxis: axis({ type: 'value', min: lo, axisLabel: { show: false }, splitLine: { show: false } }),

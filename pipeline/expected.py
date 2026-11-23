@@ -72,19 +72,36 @@ def logged_game_mu(dates):
     log = json.loads(gameproj.LOG.read_text(encoding="utf-8"))
     w = gameproj.load_weights()
     sp_of = {d.isoformat(): sp for sp, d in dates.items()}
+    # calibrate: the blend runs a little hot vs what players actually scored in the games they played,
+    # so scale it so logged projections match actual points league-wide (keeps "vs projection" centered)
+    import nba_logs
+    actual = {}
+    for aid, a in nba_logs.load(gameproj.CURRENT).items():
+        for _, day, _, mins, fp in a["games"]:
+            if mins and mins > 0:
+                actual[(aid, day)] = fp
+    def blend(model, sleeper, mk):
+        if mk is not None and sleeper is not None:
+            return float(np.dot(w["market"], [model, sleeper, mk]))
+        if sleeper is not None:
+            return float(np.dot(w["nomarket"], [model, sleeper]))
+        return float(model)
+    num = den = 0.0
+    for day, players in log.items():
+        for aid, (model, sleeper, mk) in players.items():
+            y = actual.get((aid, day))
+            if y is not None:
+                num += y
+                den += blend(model, sleeper, mk)
+    k = num / den if den > 1000 else 1.0
     out = {}
     for day, players in log.items():
         sp = sp_of.get(day)
         if sp is None:
             continue
         for aid, (model, sleeper, mk) in players.items():
-            if mk is not None and sleeper is not None:
-                v = float(np.dot(w["market"], [model, sleeper, mk]))
-            elif sleeper is not None:
-                v = float(np.dot(w["nomarket"], [model, sleeper]))
-            else:
-                v = float(model)
-            out[(int(aid), sp)] = max(v, 1.0)
+            out[(int(aid), sp)] = max(blend(model, sleeper, mk) * k, 1.0)
+    print(f"  logged projections: {len(out)} games, calibration x{k:.3f}")
     return out
 
 
@@ -136,8 +153,10 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
     rows = []
     for r in roster0.itertuples():
         for sp in done:
-            if r.pro in ctx.games.get(sp, ()) and keep(sp, r.pro):
-                gp = ctx.played.get((sp, r.player_id))
+            gp = ctx.played.get((sp, r.player_id))
+            # a game he actually played counts even when his listed NBA team (current team, not the
+            # team at the time, after a trade) had no game that day
+            if (r.pro in ctx.games.get(sp, ()) or (gp or 0) > 0) and keep(sp, r.pro):
                 rows.append((sp, m(r.player_id, sp), p[r.player_id] if gp is None else float(gp > 0), r.player_id))
     e1, _ = expected_value(cands(rows), cap_eff, E1_SIMS, rng)
 
@@ -221,10 +240,12 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
 def step_history(seasons_weeks):
     """Per-game step values of every finished team-week on record: {step: sorted list}."""
     h = {"availability": [], "moves": [], "lineup": [], "luck": []}
+    import math
+    ok = lambda v: v is not None and not (isinstance(v, float) and math.isnan(v))
     for w in seasons_weeks:
-        gp = w.get("gp") or 0
-        if gp <= 0 or w.get("availability") is None:
+        if not all(ok(w.get(k)) for k in ("gp", "availability", "moves", "lineup", "breakouts", "hot_cold")) or w["gp"] <= 0:
             continue
+        gp = w["gp"]
         for k in ("availability", "moves", "lineup"):
             h[k].append(w[k] / gp)
         h["luck"].append((w["availability"] + w["breakouts"] + w["hot_cold"]) / gp)
@@ -232,7 +253,7 @@ def step_history(seasons_weeks):
 
 
 def percentile(sorted_vals, v):
-    if not sorted_vals or v is None:
+    if not sorted_vals or v is None or v != v:
         return None
     import bisect
     lo, hi = bisect.bisect_left(sorted_vals, v), bisect.bisect_right(sorted_vals, v)
@@ -245,8 +266,10 @@ def top_players(players, n=3):
     return fmt(players.nlargest(n, "diff")), fmt(players.nsmallest(n, "diff"))
 
 
-def expected_season(season, t, model, seed=11):
-    """Completed team-weeks of a season -> (week rows DataFrame, player-season DataFrame)."""
+def expected_season(season, t, model, seed=11, game_mu=None, cv=None):
+    """Completed team-weeks of a season -> (week rows DataFrame, player-season DataFrame).
+    game_mu: per-game pre-game projections (betting lines) where logged; {} = model only, with the
+    detail lists (who missed games, moves, bench, every player) still produced."""
     rng = np.random.default_rng(seed)
     ctx = SeasonContext(season, t, model)
     caps = t["caps"].set_index("mp")
@@ -256,10 +279,12 @@ def expected_season(season, t, model, seed=11):
     for r in m.itertuples():
         c = caps.loc[r.mp]
         days = list(range(int(c.sp_start), int(c.sp_end) + 1))
-        res = week_breakdown(ctx, r.team_id, r.mp, days, int(c.cap), rng)
+        res = week_breakdown(ctx, r.team_id, r.mp, days, int(c.cap), rng, game_mu=game_mu, cv=cv)
         if res is None:
             continue
         out, players = res
+        if "players" in out:  # keep the season files small
+            out["players"] = [{k: p[k] for k in ("id", "name", "games", "pts", "proj", "bench_games", "bench_pts")} for p in out["players"]]
         out["hot"], out["cold"] = top_players(players)
         rows.append(out)
         plist.append(players.assign(team_id=r.team_id, mp=r.mp))

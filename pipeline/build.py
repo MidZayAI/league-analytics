@@ -101,10 +101,12 @@ def coach_cached(season, t):
 
 
 def expected_cached(season, t, model):
-    path = TIDY / f"expected_{season}.pkl"
+    path = TIDY / f"expected_v3_{season}.pkl"  # v2: per-step detail lists, betting-line projections where logged
     if season != CURRENT and path.exists():
         return pd.read_pickle(path)
-    e = expected.expected_season(season, t, model)
+    dates = dict(zip(t["calendar"].sp, t["calendar"].date))
+    gm = expected.logged_game_mu(dates) if season == CURRENT else {}
+    e = expected.expected_season(season, t, model, game_mu=gm, cv=model.cv)
     pd.to_pickle(e, path)
     return e
 
@@ -152,6 +154,75 @@ def build_season(season, t, model):
     return t, w, rows, coach, caps, luck.schedule_swap(w), exp_players
 
 
+def _num(v):
+    return None if v is None or (isinstance(v, float) and math.isnan(v)) else v
+
+
+def add_breakdown_percentiles(built):
+    """Percentile of every step for every finished team-week (per counted game, vs every team-week on
+    record) and a season roll-up per team (vs every team-season), the same scale the live card uses."""
+    weeks = []
+    for s, b in built.items():
+        w = b[1]
+        if "availability" not in w:
+            continue
+        reg = w[~w.playoff & w.result.notna() & w.availability.notna()]
+        weeks += reg[["availability", "moves", "lineup", "breakouts", "hot_cold", "gp"]].to_dict("records")
+    H = expected.step_history(weeks)
+
+    def pcts(r, hist, gp):
+        gp = max(gp or 0, 1)
+        return {"availability": expected.percentile(hist["availability"], r["availability"] / gp),
+                "moves": expected.percentile(hist["moves"], r["moves"] / gp),
+                "lineup": expected.percentile(hist["lineup"], r["lineup"] / gp),
+                "luck": expected.percentile(hist["luck"], (r["availability"] + r["breakouts"] + r["hot_cold"]) / gp)}
+
+    seasons_rows = []
+    for s, b in built.items():
+        w = b[1]
+        if "availability" not in w:
+            continue
+        w["pct"] = [({**pcts(r, H, r["gp"]), "perf": _num(r.get("pct_perf"))} if _num(r.get("availability")) is not None else None)
+                    for r in w.to_dict("records")]
+        reg = w[~w.playoff & w.result.notna() & w.availability.notna()]
+        for tid, g in reg.groupby("team_id"):
+            seasons_rows.append((s, tid, g))
+    # season roll-up and its percentile vs every team-season
+    tot = [{k: float(g[k].sum()) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")} for _, _, g in seasons_rows]
+    HS = expected.step_history(tot)
+    bd = {}
+    for (s, tid, g), t in zip(seasons_rows, tot):
+        def agg(col, key, val, extra=()):
+            out = {}
+            for lst in g[col].dropna():
+                for x in (lst if isinstance(lst, list) else []):
+                    o = out.setdefault(x["id"], {"id": x["id"], "name": x["name"], "games": 0, key: 0.0})
+                    o["games"] += x.get("games", 0)
+                    o[key] += x.get(val, 0.0)
+            return sorted(out.values(), key=lambda o: -abs(o[key]))[:4]
+        perf = {}
+        for lst in g["players"].dropna() if "players" in g else []:
+            for x in (lst if isinstance(lst, list) else []):
+                o = perf.setdefault(x["id"], {"id": x["id"], "name": x["name"], "games": 0, "pts": 0.0, "proj": 0.0, "bench_games": 0, "bench_pts": 0.0})
+                for k in ("games", "pts", "proj", "bench_games", "bench_pts"):
+                    o[k] += x.get(k, 0)
+        bd[(s, tid)] = {
+            "e0": float(g.e0.sum()), "availability": t["availability"], "moves": t["moves"], "lineup": t["lineup"],
+            "breakouts": t["breakouts"], "hot_cold": t["hot_cold"], "actual": float(g.actual.sum()),
+            "games_used": int(t["gp"]), "weeks": int(len(g)),
+            "lined_games": int(g["lined_games"].fillna(0).sum()) if "lined_games" in g else 0,
+            "missed": [{**m, "lost": round(m["lost"], 1)} for m in agg("missed", "lost", "lost")],
+            "added": [{**a, "pts": round(a["pts"], 1)} for a in agg("added", "pts", "pts")],
+            "dropped": [], "benched": [{**x, "pts": round(x["pts"], 1)} for x in agg("benched", "pts", "pts")],
+            "players": sorted([{**p, "pts": round(p["pts"], 1), "proj": round(p["proj"], 1), "bench_pts": round(p["bench_pts"], 1)}
+                               for p in perf.values()], key=lambda p: -p["pts"]),
+            "pct": {**pcts(t, HS, t["gp"]), "perf": None},
+        }
+    for s, b in built.items():
+        rows = b[2]
+        rows["breakdown"] = [bd.get((s, tid)) for tid in rows.team_id]
+
+
 def main():
     if "--fetch" in sys.argv:
         import fetch
@@ -174,13 +245,16 @@ def main():
                  "opt_gp", "max_games", "efficiency", "bench_lost", "coaching_loss", "over_cap",
                  "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days",
                  "e0", "e1", "e2", "e3", "e4", "opp_e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "actual",
-                 "x_result", "flipped", "hot", "cold"]
+                 "x_result", "flipped", "hot", "cold",
+                 "missed", "added", "dropped", "benched", "players", "pct", "lined_games", "games_used"]
     team_cols = ["team_id", "owner_id", "name", "abbrev", "logo", "seed", "rank_final", "w", "l", "t", "pf", "pa",
                  "exp_w", "luck", "allplay_pct", "pa_vs_avg", "bad_beats", "lucky_wins", "efficiency",
                  "bench_lost", "coaching_losses", "over_cap_weeks", "cap_deficit", "opp_cap_deficit",
                  "missed_pts", "gp_used", "cap_total", "playoffs", "champion", "runner_up",
                  "e0", "e3", "e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "x_actual",
-                 "x_w", "x_l", "flips_won", "flips_lost"]
+                 "x_w", "x_l", "flips_won", "flips_lost", "breakdown"]
+
+    add_breakdown_percentiles(built)
 
     for s, (t, w, rows, coach, caps, swap, exp_players) in built.items():
         rows = rows.assign(owner_name=rows.owner_id.map(names), logo=rows.logo.map(logos.localize))
@@ -205,7 +279,7 @@ def main():
     write("history.json", {
         "owners": names,
         "profiles": profiles,
-        "seasons": season_df[["season", "complete"] + team_cols].to_dict("records"),
+        "seasons": season_df[["season", "complete"] + [c for c in team_cols if c != "breakdown"]].to_dict("records"),
         "all_time": franchises.all_time(season_df).to_dict("records"),
         "all_time_complete": franchises.all_time(done).to_dict("records"),
         "h2h": franchises.head_to_head(weekly_all),

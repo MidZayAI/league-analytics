@@ -910,7 +910,9 @@
 
         <div class="grid md:grid-cols-2 gap-4">
           <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
-            <div class="card space-y-3" x-show="s.expected_so_far" x-data="{ all: false }">
+            <div class="contents">
+            <template x-for="bd in (s.expected_so_far ? [s.expected_so_far] : [])" :key="'bd-' + s.team_id">
+            <div class="card space-y-3" x-data="{ all: false }">
               <div class="flex items-center gap-2.5 min-w-0">
                 <img class="logo w-8 h-8" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
                 <h3 class="truncate flex-1" x-text="s.name"></h3>
@@ -918,17 +920,17 @@
               </div>
               <div class="flex items-end justify-between gap-3">
                 <div>
-                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(s.expected_so_far?.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(s))"></b></div>
-                  <div class="text-[12px] text-muted" x-text="`${s.expected_so_far?.days_done} days done` + (s.expected_so_far?.lined_games ? ` · ${s.expected_so_far.lined_games} of ${s.expected_so_far.games_used} games judged on the betting line` : '')"></div>
+                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+                  <div class="text-[12px] text-muted" x-text="`${bd.days_done} days done · ` + sfSource(bd)"></div>
                 </div>
                 <div class="text-right shrink-0">
-                  <div class="text-[22px] font-extrabold leading-none" :class="sfScored(s) - s.expected_so_far?.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(s) - s.expected_so_far?.e0, 0)"></div>
-                  <div class="text-[12px] text-muted mt-0.5" x-show="s.expected_so_far?.pct?.luck != null" x-text="`luck: ${Math.round((s.expected_so_far?.pct?.luck || 0) * 100)}th pct`"></div>
+                  <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
+                  <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
                 </div>
               </div>
-              <div class="chart h-48" x-chart="sfChart(s)"></div>
+              <div class="chart h-48" x-chart="sfChart(bd)"></div>
               <div>
-                <template x-for="st in sfSteps(s)" :key="st.key">
+                <template x-for="st in sfSteps(bd)" :key="st.key">
                   <div class="py-2 border-t" style="border-color: var(--grid)">
                     <div class="flex items-center gap-2">
                       <span class="text-[13.5px] font-semibold flex-1 flex items-center gap-1.5">
@@ -942,7 +944,7 @@
                       <div class="relative flex-1 h-1.5 rounded-full" style="background: linear-gradient(90deg, var(--bad), var(--grid) 50%, var(--good)); opacity: .8">
                         <div class="absolute -top-[3px] w-[3px] h-3 rounded-sm" :style="`left: calc(${(st.pct || 0) * 100}% - 1.5px); background: var(--ink)`"></div>
                       </div>
-                      <span class="text-[12px] w-[150px] text-right shrink-0" :style="`color: ${sfPctColor(st.pct)}`" x-text="sfPctText(st)"></span>
+                      <span class="text-[12px] w-[150px] text-right shrink-0" :style="`color: ${sfPctColor(st.pct)}`" x-text="sfPctText(st, 'weeks')"></span>
                     </div>
                   </div>
                 </template>
@@ -952,7 +954,7 @@
                 <table class="tbl" style="font-size: 12.5px">
                   <thead><tr><th>Player</th><th class="num">G</th><th class="num">Pts</th><th class="num">Proj</th><th class="num">+/−</th><th class="num">Bench</th></tr></thead>
                   <tbody>
-                    <template x-for="p in s.expected_so_far?.players || []" :key="p.id">
+                    <template x-for="p in bd.players || []" :key="p.id">
                       <tr>
                         <td class="max-w-[140px] truncate" x-text="p.name"></td>
                         <td class="num" x-text="p.games || '–'"></td>
@@ -962,13 +964,15 @@
                         <td class="num text-muted" x-text="p.bench_games ? `${p.bench_games} g, ${fmt.n(p.bench_pts)}` : ''"></td>
                       </tr>
                     </template>
-                    <tr class="font-bold"><td>Counted</td><td class="num" x-text="s.expected_so_far?.games_used"></td><td class="num" x-text="fmt.n(s.expected_so_far?.actual)"></td><td class="num" x-text="fmt.n((s.expected_so_far?.players || []).reduce((t, p) => t + p.proj, 0))"></td><td></td><td></td></tr>
-                    <tr x-show="s.expected_so_far?.in_progress"><td class="text-ink2">Still playing</td><td></td><td class="num" x-text="fmt.signed(s.expected_so_far?.in_progress, 0)"></td><td></td><td></td><td></td></tr>
-                    <tr class="font-bold"><td>Scoreboard</td><td></td><td class="num" x-text="fmt.n(sfScored(s))"></td><td></td><td></td><td></td></tr>
+                    <tr class="font-bold"><td>Counted</td><td class="num" x-text="bd.games_used"></td><td class="num" x-text="fmt.n(bd.actual)"></td><td class="num" x-text="fmt.n((bd.players || []).reduce((t, p) => t + p.proj, 0))"></td><td></td><td></td></tr>
+                    <tr x-show="bd.in_progress"><td class="text-ink2">Still playing</td><td></td><td class="num" x-text="fmt.signed(bd.in_progress, 0)"></td><td></td><td></td><td></td></tr>
+                    <tr class="font-bold"><td>Scoreboard</td><td></td><td class="num" x-text="fmt.n(sfScored(bd))"></td><td></td><td></td><td></td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
+          </template>
+          </div>
           </template>
         </div>
 
@@ -1166,35 +1170,69 @@
 
         <div class="grid md:grid-cols-2 gap-4">
           <template x-for="s in [h2hPast.a, h2hPast.b]" :key="s.team_id">
-            <div class="card space-y-3">
-              <div class="flex items-center gap-2.5">
-                <img class="logo w-6 h-6" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
-                <h3 class="flex items-center gap-1.5"><span x-text="tname(s.team_id)"></span>
-                  <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.breakdown"></span></span></h3>
-              </div>
-              <div class="chart h-56" x-show="s.e0 != null" x-chart="waterfallChartFor(s)"></div>
-              <div>
-                <div class="label mb-1">Hot &amp; cold</div>
-                <template x-for="p in [...(s.hot || []).filter(p => p.diff > 0), ...(s.cold || []).filter(p => p.diff < 0)]" :key="p.name">
-                  <div class="flex items-center gap-2.5 py-1.5 border-t text-[13px]" style="border-color: var(--grid)">
-                    <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
-                    <span class="flex-1 truncate font-medium" x-text="p.name"></span>
-                    <span class="text-muted text-[12px]" x-text="`${fmt.n(p.pts)} pts`"></span>
-                    <span class="w-12 text-right font-semibold" :class="p.diff > 0 ? 'up' : 'down'" x-text="fmt.signed(p.diff, 0)"></span>
+            <div class="contents">
+          <template x-for="bd in ((s.missed ? s : null) ? [(s.missed ? s : null)] : [])" :key="'bd-' + s.team_id">
+              <div class="card space-y-3" x-data="{ all: false }">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <img class="logo w-8 h-8" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
+                  <h3 class="truncate flex-1" x-text="tname(s.team_id)"></h3>
+                  <span class="info-wrap shrink-0" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.sofar"></span></span>
+                </div>
+                <div class="flex items-end justify-between gap-3">
+                  <div>
+                    <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+                    <div class="text-[12px] text-muted" x-text="sfSource(bd)"></div>
                   </div>
-                </template>
-              </div>
-              <div x-show="(s.missed_starts || []).length">
-                <div class="label mb-1">Left on the bench</div>
-                <template x-for="p in s.missed_starts || []" :key="p.name + p.sp">
-                  <div class="flex items-center gap-2.5 py-1.5 border-t text-[13px]" style="border-color: var(--grid)">
-                    <img class="hs w-7 h-7" :src="headshot(p.id)" alt="" loading="lazy" @error="$el.src = silhouette">
-                    <span class="flex-1 truncate" x-text="p.name"></span>
-                    <span class="font-semibold" x-text="fmt.n(p.pts)"></span>
+                  <div class="text-right shrink-0">
+                    <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
+                    <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
                   </div>
-                </template>
+                </div>
+                <div class="chart h-48" x-chart="sfChart(bd)"></div>
+                <div>
+                  <template x-for="st in sfSteps(bd)" :key="st.key">
+                    <div class="py-2 border-t" style="border-color: var(--grid)">
+                      <div class="flex items-center gap-2">
+                        <span class="text-[13.5px] font-semibold flex-1 flex items-center gap-1.5">
+                          <span x-text="st.label"></span>
+                          <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" :aria-label="`About ${st.label}`">i</button><span class="pop" x-show="o" x-text="st.info"></span></span>
+                        </span>
+                        <span class="font-bold tabular-nums text-[14px]" :class="st.val > 2 ? 'up' : st.val < -2 ? 'down' : 'text-ink2'" x-text="fmt.signed(st.val, 0)"></span>
+                      </div>
+                      <div class="text-[12px] text-ink2 mt-0.5" x-text="st.why"></div>
+                      <div class="flex items-center gap-2 mt-1.5" x-show="st.pct != null">
+                        <div class="relative flex-1 h-1.5 rounded-full" style="background: linear-gradient(90deg, var(--bad), var(--grid) 50%, var(--good)); opacity: .8">
+                          <div class="absolute -top-[3px] w-[3px] h-3 rounded-sm" :style="`left: calc(${(st.pct || 0) * 100}% - 1.5px); background: var(--ink)`"></div>
+                        </div>
+                        <span class="text-[12px] w-[150px] text-right shrink-0" :style="`color: ${sfPctColor(st.pct)}`" x-text="sfPctText(st, 'weeks')"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <button class="btn-ghost w-full" @click="all = !all" x-text="all ? 'Hide players' : 'Every player'"></button>
+                <div x-show="all" class="overflow-x-auto -mx-1">
+                  <table class="tbl" style="font-size: 12.5px">
+                    <thead><tr><th>Player</th><th class="num">G</th><th class="num">Pts</th><th class="num">Proj</th><th class="num">+/−</th><th class="num">Bench</th></tr></thead>
+                    <tbody>
+                      <template x-for="p in bd.players || []" :key="p.id">
+                        <tr>
+                          <td class="max-w-[140px] truncate" x-text="p.name"></td>
+                          <td class="num" x-text="p.games || '–'"></td>
+                          <td class="num font-semibold" x-text="p.games ? fmt.n(p.pts) : '–'"></td>
+                          <td class="num text-ink2" x-text="p.games ? fmt.n(p.proj) : '–'"></td>
+                          <td class="num" :class="p.pts - p.proj > 2 ? 'up' : p.pts - p.proj < -2 ? 'down' : ''" x-text="p.games ? fmt.signed(p.pts - p.proj, 0) : ''"></td>
+                          <td class="num text-muted" x-text="p.bench_games ? `${p.bench_games} g, ${fmt.n(p.bench_pts)}` : ''"></td>
+                        </tr>
+                      </template>
+                      <tr class="font-bold"><td>Counted</td><td class="num" x-text="bd.games_used"></td><td class="num" x-text="fmt.n(bd.actual)"></td><td class="num" x-text="fmt.n((bd.players || []).reduce((t, p) => t + p.proj, 0))"></td><td></td><td></td></tr>
+                      <tr x-show="bd.in_progress"><td class="text-ink2">Still playing</td><td></td><td class="num" x-text="fmt.signed(bd.in_progress, 0)"></td><td></td><td></td><td></td></tr>
+                      <tr class="font-bold"><td>Scoreboard</td><td></td><td class="num" x-text="fmt.n(sfScored(bd))"></td><td></td><td></td><td></td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </template>
+          </div>
           </template>
         </div>
       </div>
@@ -1748,14 +1786,67 @@
             <div x-show="!tv" class="chart h-64" x-chart="scoresChart()"></div>
             <div x-show="tv" x-html="tableHtml(scoresChart())"></div>
           </div>
-          <div class="card" x-data="{ tv: false }" x-show="T.e0 != null">
-            <div class="flex items-center justify-between gap-3 mb-2">
-              <h3 class="flex items-center gap-1.5">Season breakdown <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop" x-show="o" x-text="glossary.breakdown"></span></span></h3>
-              <button class="btn-ghost" @click="tv = !tv" x-text="tv ? 'Chart' : 'Table'"></button>
+          <template x-for="bd in (T.breakdown ? [T.breakdown] : [])" :key="'bd-' + T.team_id">
+            <div class="card space-y-3" x-data="{ all: false }">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <img class="logo w-8 h-8" :src="logoOf(T.team_id)" :style="`--ring: ${teamColor(T.team_id)}`" alt="" @error="$el.src = avatarOf(T.team_id)">
+                <h3 class="truncate flex-1" x-text="'Season, step by step'"></h3>
+                <span class="info-wrap shrink-0" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.sofar"></span></span>
+              </div>
+              <div class="flex items-end justify-between gap-3">
+                <div>
+                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+                  <div class="text-[12px] text-muted" x-text="`${bd.weeks} weeks · ` + sfSource(bd, 'season')"></div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
+                  <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
+                </div>
+              </div>
+              <div class="chart h-48" x-chart="sfChart(bd)"></div>
+              <div>
+                <template x-for="st in sfSteps(bd)" :key="st.key">
+                  <div class="py-2 border-t" style="border-color: var(--grid)">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[13.5px] font-semibold flex-1 flex items-center gap-1.5">
+                        <span x-text="st.label"></span>
+                        <span class="info-wrap" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" :aria-label="`About ${st.label}`">i</button><span class="pop" x-show="o" x-text="st.info"></span></span>
+                      </span>
+                      <span class="font-bold tabular-nums text-[14px]" :class="st.val > 2 ? 'up' : st.val < -2 ? 'down' : 'text-ink2'" x-text="fmt.signed(st.val, 0)"></span>
+                    </div>
+                    <div class="text-[12px] text-ink2 mt-0.5" x-text="st.why"></div>
+                    <div class="flex items-center gap-2 mt-1.5" x-show="st.pct != null">
+                      <div class="relative flex-1 h-1.5 rounded-full" style="background: linear-gradient(90deg, var(--bad), var(--grid) 50%, var(--good)); opacity: .8">
+                        <div class="absolute -top-[3px] w-[3px] h-3 rounded-sm" :style="`left: calc(${(st.pct || 0) * 100}% - 1.5px); background: var(--ink)`"></div>
+                      </div>
+                      <span class="text-[12px] w-[150px] text-right shrink-0" :style="`color: ${sfPctColor(st.pct)}`" x-text="sfPctText(st, 'team-seasons')"></span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <button class="btn-ghost w-full" @click="all = !all" x-text="all ? 'Hide players' : 'Every player'"></button>
+              <div x-show="all" class="overflow-x-auto -mx-1">
+                <table class="tbl" style="font-size: 12.5px">
+                  <thead><tr><th>Player</th><th class="num">G</th><th class="num">Pts</th><th class="num">Proj</th><th class="num">+/−</th><th class="num">Bench</th></tr></thead>
+                  <tbody>
+                    <template x-for="p in bd.players || []" :key="p.id">
+                      <tr>
+                        <td class="max-w-[140px] truncate" x-text="p.name"></td>
+                        <td class="num" x-text="p.games || '–'"></td>
+                        <td class="num font-semibold" x-text="p.games ? fmt.n(p.pts) : '–'"></td>
+                        <td class="num text-ink2" x-text="p.games ? fmt.n(p.proj) : '–'"></td>
+                        <td class="num" :class="p.pts - p.proj > 2 ? 'up' : p.pts - p.proj < -2 ? 'down' : ''" x-text="p.games ? fmt.signed(p.pts - p.proj, 0) : ''"></td>
+                        <td class="num text-muted" x-text="p.bench_games ? `${p.bench_games} g, ${fmt.n(p.bench_pts)}` : ''"></td>
+                      </tr>
+                    </template>
+                    <tr class="font-bold"><td>Counted</td><td class="num" x-text="bd.games_used"></td><td class="num" x-text="fmt.n(bd.actual)"></td><td class="num" x-text="fmt.n((bd.players || []).reduce((t, p) => t + p.proj, 0))"></td><td></td><td></td></tr>
+                    <tr x-show="bd.in_progress"><td class="text-ink2">Still playing</td><td></td><td class="num" x-text="fmt.signed(bd.in_progress, 0)"></td><td></td><td></td><td></td></tr>
+                    <tr class="font-bold"><td>Scoreboard</td><td></td><td class="num" x-text="fmt.n(sfScored(bd))"></td><td></td><td></td><td></td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div x-show="!tv" class="chart h-64" x-chart="seasonWaterfall()"></div>
-            <div x-show="tv" x-html="tableHtml(seasonWaterfall())"></div>
-          </div>
+          </template>
         </div>
 
         <div class="grid lg:grid-cols-5 gap-4">
@@ -2880,9 +2971,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=e8444052b0"></script>
+<script src="js/core.js?v=30780f8e30"></script>
 <script src="js/legacy.js?v=edcef3148f"></script>
-<script src="js/matchups.js?v=d4568432b0"></script>
+<script src="js/matchups.js?v=23d903c700"></script>
 <script src="js/teams.js?v=2d70216709"></script>
 <script src="js/league.js?v=6a0a3b75f0"></script>
 <script src="js/history.js?v=428d3cc680"></script>
