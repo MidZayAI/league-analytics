@@ -46,11 +46,12 @@ window.History = {
 /* History > Luck & skill ranks: every team-season / team-week by breakdown percentile. */
 const RANK_COLS = [
   { key: 'who', label: 'Who played', raw: (r) => r.availability, info: 'Injuries and rest: points gained or lost from players sitting out (or playing more than expected). Luck.' },
-  { key: 'moves', label: 'Roster moves', raw: (r) => r.moves, info: 'Points from pickups and drops. A decision.' },
-  { key: 'lineup', label: 'Lineup & cap', raw: (r) => r.lineup, info: 'Points from which games counted vs the best use of the games cap. A decision.' },
-  { key: 'perf', label: 'vs projection', raw: (r) => r.breakouts + r.hot_cold, info: 'Points in the games that counted vs what those players were projected to score. Luck (plus breakouts).' },
-  { key: 'luck', label: 'Luck', raw: (r) => r.availability + r.breakouts + r.hot_cold, info: 'Who played + vs projection, per game.', strong: true },
-  { key: 'decisions', label: 'Decisions', raw: (r) => r.moves + r.lineup, info: 'Roster moves + lineup & cap, per game.', strong: true },
+  { key: 'pickups', label: 'Pickups', raw: (r) => r.pickups, info: "Pickups' points in counted games vs a replacement-level free agent that week. A decision." },
+  { key: 'lineup', label: 'Lineup & cap', raw: (r) => r.lineup2, info: 'Which games counted vs what the roster was expected to give. A decision.' },
+  { key: 'unused', label: 'Unused games', raw: (r) => r.unused, info: 'Cap games left empty, each valued at a replacement-level free agent. A decision.' },
+  { key: 'perf', label: 'vs projection', raw: (r) => r.perf2, info: 'Points in the games that counted (pickups excluded) vs their pre-game projections. Luck (plus breakouts).' },
+  { key: 'luck', label: 'Luck', raw: (r) => r.availability + r.perf2, info: 'Who played + vs projection, per game.', strong: true },
+  { key: 'decisions', label: 'Decisions', raw: (r) => r.pickups + r.lineup2 + r.unused, info: 'Pickups + lineup & cap + unused games, per game.', strong: true },
 ];
 window.Ranks = {
   ranksData: null, rkKind: 'seasons', rkMode: 'all', rkSort: 'luck', rkAsc: false, rkTeam: 'all', rkSeason: 'all', rankCols: RANK_COLS,

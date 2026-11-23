@@ -101,12 +101,20 @@ def coach_cached(season, t):
 
 
 def expected_cached(season, t, model):
-    path = TIDY / f"expected_v4_{season}.pkl"  # v4: NBA-wide priors; per-step detail lists, betting lines where logged
+    path = TIDY / f"expected_v5_{season}.pkl"  # v5: unused cap games + pickups vs replacement level
     if season != CURRENT and path.exists():
         return pd.read_pickle(path)
     dates = dict(zip(t["calendar"].sp, t["calendar"].date))
     gm = expected.logged_game_mu(dates) if season == CURRENT else {}
-    e = expected.expected_season(season, t, model, game_mu=gm, cv=model.cv)
+    # replacement level (best free agents) per matchup week: values pickups and unused cap games
+    try:
+        import draft as draft_mod
+        sps = sorted(int(x) for x in t["daily"].sp.unique())
+        rb, _ = draft_mod.weekly_replacement(season, t["caps"], dates, sps[0], sps[-1], len(t["teams"]) * 13, model.repl)
+    except Exception as ex:
+        print(f"  {season}: replacement level skipped ({ex})")
+        rb = {}
+    e = expected.expected_season(season, t, model, game_mu=gm, cv=model.cv, repl_by_mp=rb)
     pd.to_pickle(e, path)
     return e
 
@@ -158,60 +166,56 @@ def _num(v):
     return None if v is None or (isinstance(v, float) and math.isnan(v)) else v
 
 
-STEP_KEYS = ("who", "moves", "lineup", "perf", "luck", "decisions")
+RANK_FIELDS = ("availability", "pickups", "lineup2", "unused", "perf2", "unused_games", "gp")
 
 
-def _per_game(r):
-    gp = max(float(r["gp"] or 0), 1.0)
-    who, perf = r["availability"] / gp, (r["breakouts"] + r["hot_cold"]) / gp
-    mv, lu = r["moves"] / gp, r["lineup"] / gp
-    return {"who": who, "moves": mv, "lineup": lu, "perf": perf, "luck": who + perf, "decisions": mv + lu}
+def _ok(v):
+    return v is not None and not (isinstance(v, float) and math.isnan(v))
 
 
 def _rank_rows(rows):
     """Two percentile sets per row: vs every row of the kind ('all'), and after removing that season's
     league average per game ('adj', so a heavy-injury season doesn't count against everyone)."""
-    vals = [_per_game(r) for r in rows]
+    K = expected.STEPS
+    vals = [expected.step_values(r) for r in rows]
     by_season = {}
     for r, v in zip(rows, vals):
         by_season.setdefault(r["season"], []).append(v)
-    mean = {s: {k: float(np.mean([v[k] for v in vs])) for k in STEP_KEYS} for s, vs in by_season.items()}
-    adj = [{k: v[k] - mean[r["season"]][k] for k in STEP_KEYS} for r, v in zip(rows, vals)]
-    srt = {k: sorted(v[k] for v in vals) for k in STEP_KEYS}
-    srt_adj = {k: sorted(v[k] for v in adj) for k in STEP_KEYS}
+    mean = {s: {k: float(np.mean([v[k] for v in vs])) for k in K} for s, vs in by_season.items()}
+    adj = [{k: v[k] - mean[r["season"]][k] for k in K} for r, v in zip(rows, vals)]
+    srt = {k: sorted(v[k] for v in vals) for k in K}
+    srt_adj = {k: sorted(v[k] for v in adj) for k in K}
     for r, v, a in zip(rows, vals, adj):
-        r["all"] = {k: expected.percentile(srt[k], v[k]) for k in STEP_KEYS}
-        r["adj"] = {k: expected.percentile(srt_adj[k], a[k]) for k in STEP_KEYS}
+        r["all"] = {k: expected.percentile(srt[k], v[k]) for k in K}
+        r["adj"] = {k: expected.percentile(srt_adj[k], a[k]) for k in K}
     return rows
 
 
 def write_ranks(built):
     """site/data/ranks.json: every finished regular-season team-season and team-week with step points
     and percentiles (History > Luck & skill ranks)."""
-    ok = lambda v: v is not None and not (isinstance(v, float) and math.isnan(v))
     weeks, seasons = [], []
     for s, b in built.items():
         w, rows = b[1], b[2]
-        if "availability" not in w:
+        if "pickups" not in w:
             continue
         name = dict(zip(rows.team_id, rows.name))
         owner = dict(zip(rows.team_id, rows.owner_id))
         reg = w[~w.playoff & w.result.notna()]
-        good = [r for r in reg.to_dict("records")
-                if all(ok(r.get(k)) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")) and r["gp"] > 0]
+        good = [r for r in reg.to_dict("records") if all(_ok(r.get(k)) for k in RANK_FIELDS) and r["gp"] > 0]
         for r in good:
             weeks.append({"season": s, "mp": int(r["mp"]), "team_id": int(r["team_id"]), "owner_id": owner.get(r["team_id"]),
-                          "name": name.get(r["team_id"]), "opp_id": int(r["opp_id"]) if ok(r.get("opp_id")) else None,
+                          "name": name.get(r["team_id"]), "opp_id": int(r["opp_id"]) if _ok(r.get("opp_id")) else None,
                           "matchup_id": int(r["matchup_id"]), "pts": r["pts"], "opp_pts": r["opp_pts"], "result": r["result"],
-                          "gp": float(r["gp"]), "lined": int(r.get("lined_games") or 0) if ok(r.get("lined_games")) else 0,
-                          **{k: round(float(r[k]), 1) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold")}})
+                          "lined": int(r.get("lined_games") or 0) if _ok(r.get("lined_games")) else 0,
+                          **{k: round(float(r[k]), 1) for k in RANK_FIELDS}})
         tot = {}
         for r in good:
-            t = tot.setdefault(int(r["team_id"]), {k: 0.0 for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")} | {"weeks": 0, "lined": 0})
-            for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp"):
+            t = tot.setdefault(int(r["team_id"]), {k: 0.0 for k in RANK_FIELDS} | {"weeks": 0, "lined": 0})
+            for k in RANK_FIELDS:
                 t[k] += float(r[k])
             t["weeks"] += 1
-            t["lined"] += int(r.get("lined_games") or 0) if ok(r.get("lined_games")) else 0
+            t["lined"] += int(r.get("lined_games") or 0) if _ok(r.get("lined_games")) else 0
         for row in rows.to_dict("records"):
             t = tot.get(int(row["team_id"]))
             if not t:
@@ -220,8 +224,7 @@ def write_ranks(built):
                             "w": int(row["w"]), "l": int(row["l"]), "t": int(row["t"] or 0), "seed": _num(row.get("seed")),
                             "rank_final": _num(row.get("rank_final")), "champion": bool(row.get("champion")),
                             "runner_up": bool(row.get("runner_up")), "complete": bool(b[0]["complete"]),
-                            **{k: round(t[k], 1) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")},
-                            "weeks": t["weeks"], "lined": t["lined"]})
+                            **{k: round(t[k], 1) for k in RANK_FIELDS}, "weeks": t["weeks"], "lined": t["lined"]})
     write("ranks.json", {"seasons": _rank_rows(seasons), "weeks": _rank_rows(weeks)})
     print(f"ranks: {len(seasons)} team-seasons, {len(weeks)} team-weeks")
 
@@ -232,35 +235,28 @@ def add_breakdown_percentiles(built):
     weeks = []
     for s, b in built.items():
         w = b[1]
-        if "availability" not in w:
+        if "pickups" not in w:
             continue
-        reg = w[~w.playoff & w.result.notna() & w.availability.notna()]
-        weeks += reg[["availability", "moves", "lineup", "breakouts", "hot_cold", "gp"]].to_dict("records")
+        reg = w[~w.playoff & w.result.notna() & w.pickups.notna()]
+        weeks += reg[list(RANK_FIELDS)].to_dict("records")
     H = expected.step_history(weeks)
-
-    def pcts(r, hist, gp):
-        gp = max(gp or 0, 1)
-        return {"availability": expected.percentile(hist["availability"], r["availability"] / gp),
-                "moves": expected.percentile(hist["moves"], r["moves"] / gp),
-                "lineup": expected.percentile(hist["lineup"], r["lineup"] / gp),
-                "luck": expected.percentile(hist["luck"], (r["availability"] + r["breakouts"] + r["hot_cold"]) / gp)}
 
     seasons_rows = []
     for s, b in built.items():
         w = b[1]
-        if "availability" not in w:
+        if "pickups" not in w:
             continue
-        w["pct"] = [({**pcts(r, H, r["gp"]), "perf": _num(r.get("pct_perf"))} if _num(r.get("availability")) is not None else None)
+        w["pct"] = [(expected.step_percentiles(r, H) if all(_ok(r.get(k)) for k in RANK_FIELDS) and r["gp"] > 0 else None)
                     for r in w.to_dict("records")]
-        reg = w[~w.playoff & w.result.notna() & w.availability.notna()]
+        reg = w[~w.playoff & w.result.notna() & w.pickups.notna()]
         for tid, g in reg.groupby("team_id"):
             seasons_rows.append((s, tid, g))
     # season roll-up and its percentile vs every team-season
-    tot = [{k: float(g[k].sum()) for k in ("availability", "moves", "lineup", "breakouts", "hot_cold", "gp")} for _, _, g in seasons_rows]
+    tot = [{k: float(g[k].sum()) for k in RANK_FIELDS} for _, _, g in seasons_rows]
     HS = expected.step_history(tot)
     bd = {}
     for (s, tid, g), t in zip(seasons_rows, tot):
-        def agg(col, key, val, extra=()):
+        def agg(col, key, val):
             out = {}
             for lst in g[col].dropna():
                 for x in (lst if isinstance(lst, list) else []):
@@ -274,17 +270,26 @@ def add_breakdown_percentiles(built):
                 o = perf.setdefault(x["id"], {"id": x["id"], "name": x["name"], "games": 0, "pts": 0.0, "proj": 0.0, "bench_games": 0, "bench_pts": 0.0})
                 for k in ("games", "pts", "proj", "bench_games", "bench_pts"):
                     o[k] += x.get(k, 0)
+        picks = {}
+        for lst in g["added"].dropna():
+            for x in (lst if isinstance(lst, list) else []):
+                o = picks.setdefault(x["id"], {"id": x["id"], "name": x["name"], "games": 0, "counted": 0, "pts": 0.0, "vs_repl": 0.0})
+                for k in ("games", "counted", "pts", "vs_repl"):
+                    o[k] += x.get(k, 0) or 0
         bd[(s, tid)] = {
-            "e0": float(g.e0.sum()), "availability": t["availability"], "moves": t["moves"], "lineup": t["lineup"],
-            "breakouts": t["breakouts"], "hot_cold": t["hot_cold"], "actual": float(g.actual.sum()),
-            "games_used": int(t["gp"]), "weeks": int(len(g)),
+            "e0x": float(g.e0x.sum()), "availability": t["availability"], "pickups": t["pickups"], "lineup2": t["lineup2"],
+            "unused": t["unused"], "unused_games": int(t["unused_games"]), "perf2": t["perf2"],
+            "actual": float(g.actual.sum()), "games_used": int(t["gp"]), "weeks": int(len(g)),
+            "cap": int(g.cap.sum()) if "cap" in g else None,
+            "repl": round(float(g.repl.mean()), 1) if "repl" in g else None,
             "lined_games": int(g["lined_games"].fillna(0).sum()) if "lined_games" in g else 0,
             "missed": [{**m, "lost": round(m["lost"], 1)} for m in agg("missed", "lost", "lost")],
-            "added": [{**a, "pts": round(a["pts"], 1)} for a in agg("added", "pts", "pts")],
+            "added": sorted([{**a, "pts": round(a["pts"], 1), "vs_repl": round(a["vs_repl"], 1)} for a in picks.values()],
+                            key=lambda a: -abs(a["vs_repl"]))[:4],
             "dropped": [], "benched": [{**x, "pts": round(x["pts"], 1)} for x in agg("benched", "pts", "pts")],
             "players": sorted([{**p, "pts": round(p["pts"], 1), "proj": round(p["proj"], 1), "bench_pts": round(p["bench_pts"], 1)}
                                for p in perf.values()], key=lambda p: -p["pts"]),
-            "pct": {**pcts(t, HS, t["gp"]), "perf": None},
+            "pct": expected.step_percentiles(t, HS),
         }
     for s, b in built.items():
         rows = b[2]
@@ -314,7 +319,8 @@ def main():
                  "missed_starts", "missed_games", "missed_pts", "missed_top", "cap_deficit", "days",
                  "e0", "e1", "e2", "e3", "e4", "opp_e4", "availability", "moves", "lineup", "breakouts", "hot_cold", "actual",
                  "x_result", "flipped", "hot", "cold",
-                 "missed", "added", "dropped", "benched", "players", "pct", "lined_games", "games_used"]
+                 "missed", "added", "dropped", "benched", "players", "pct", "lined_games", "games_used",
+                 "e0x", "pickups", "lineup2", "unused", "unused_games", "perf2", "repl"]
     team_cols = ["team_id", "owner_id", "name", "abbrev", "logo", "seed", "rank_final", "w", "l", "t", "pf", "pa",
                  "exp_w", "luck", "allplay_pct", "pa_vs_avg", "bad_beats", "lucky_wins", "efficiency",
                  "bench_lost", "coaching_losses", "over_cap_weeks", "cap_deficit", "opp_cap_deficit",

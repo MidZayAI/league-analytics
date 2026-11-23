@@ -105,7 +105,8 @@ def logged_game_mu(dates):
     return out
 
 
-def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_day=None, game_mu=None, cv=None):
+def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_day=None, game_mu=None, cv=None,
+                   repl=None, final=None):
     """Breakdown for one team-week. done_days limits it to the days played so far (live view);
     then E1/E2 get the same number of games the team has actually used so far.
     partial_day=(sp, pro_team_ids): on that day (today) only games of those NBA teams count, i.e.
@@ -180,9 +181,28 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
     parts = out["e0"] + out["availability"] + out["moves"] + out["lineup"] + out["breakouts"] + out["hot_cold"]
     assert abs(parts - actual) < 1e-6, (tid, mp, parts, actual)
 
+    # v2 steps: unused cap games cost a replacement-level player's points; pickups are judged against
+    # that same replacement level; vs projection covers everyone else's counted games
+    R = float(repl) if repl else float(ctx.model.repl)
+    if final is None:
+        final = done_days is None
+    in0 = set(roster0.player_id)
+    added_ids = set(have.player_id) - in0
+    used = int(counted.gp.sum())
+    u = max(int(cap) - used, 0) if final else 0
+    pick = cg.player_id.isin(added_ids).to_numpy()
+    out["repl"] = round(R, 2)
+    out["unused_games"] = u
+    out["unused"] = -u * R
+    out["e0x"] = e0 + u * R
+    out["pickups"] = float((cg.pts[pick] - R).sum())
+    out["perf2"] = float((cg.pts[~pick] - cg.mu[~pick]).sum())
+    out["lineup2"] = actual - out["e0x"] - out["availability"] - out["pickups"] - out["unused"] - out["perf2"]
+    parts2 = out["e0x"] + out["availability"] + out["pickups"] + out["lineup2"] + out["unused"] + out["perf2"]
+    assert abs(parts2 - actual) < 1e-6, (tid, mp, parts2, actual)
+
     if game_mu is not None:  # live view: the players behind each step
         name = dict(zip(td.player_id, td.name))
-        in0 = set(roster0.player_id)
         # missed games: week-start players sitting out games their NBA team played
         c0 = c0.assign(start=s0)
         missed = {}
@@ -195,11 +215,15 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
         # roster moves: who came in (games played, points that counted) and who went out
         by_p = counted.groupby("player_id").pts.sum().to_dict()
         added = {}
+        cnt = counted.groupby("player_id").gp.sum().to_dict()
         for r in have.itertuples():
             if r.player_id not in in0:
                 x = added.setdefault(int(r.player_id), {"id": int(r.player_id), "name": name.get(r.player_id), "games": 0,
-                                                        "pts": float(by_p.get(r.player_id, 0.0))})
+                                                        "pts": float(by_p.get(r.player_id, 0.0)),
+                                                        "counted": int(cnt.get(r.player_id, 0))})
                 x["games"] += 1
+        for x in added.values():
+            x["vs_repl"] = round(x["pts"] - R * x["counted"], 1)
         on_team = set(zip(td.sp, td.player_id))
         dropped = {}
         for r in c0[in_scope].itertuples():
@@ -237,19 +261,35 @@ def week_breakdown(ctx, tid, mp, week_days, cap, rng, done_days=None, partial_da
     return out, players
 
 
+STEPS = ("who", "pickups", "lineup", "unused", "perf", "luck", "decisions")
+STEP_FIELDS = ("gp", "availability", "pickups", "lineup2", "unused", "perf2")
+
+
+def step_values(w):
+    """Per-game value of each step for one team-week (or season total): higher = better for the team."""
+    gp = max(float(w["gp"]), 1.0)
+    v = {"who": w["availability"] / gp, "pickups": w["pickups"] / gp, "lineup": w["lineup2"] / gp,
+         "unused": w["unused"] / gp, "perf": w["perf2"] / gp}
+    v["luck"] = v["who"] + v["perf"]
+    v["decisions"] = v["pickups"] + v["lineup"] + v["unused"]
+    return v
+
+
 def step_history(seasons_weeks):
-    """Per-game step values of every finished team-week on record: {step: sorted list}."""
-    h = {"availability": [], "moves": [], "lineup": [], "luck": []}
+    """Per-game step values of every finished team-week (or team-season) on record: {step: sorted list}."""
     import math
     ok = lambda v: v is not None and not (isinstance(v, float) and math.isnan(v))
+    h = {k: [] for k in STEPS}
     for w in seasons_weeks:
-        if not all(ok(w.get(k)) for k in ("gp", "availability", "moves", "lineup", "breakouts", "hot_cold")) or w["gp"] <= 0:
+        if not all(ok(w.get(k)) for k in STEP_FIELDS) or w["gp"] <= 0:
             continue
-        gp = w["gp"]
-        for k in ("availability", "moves", "lineup"):
-            h[k].append(w[k] / gp)
-        h["luck"].append((w["availability"] + w["breakouts"] + w["hot_cold"]) / gp)
+        for k, v in step_values(w).items():
+            h[k].append(v)
     return {k: sorted(v) for k, v in h.items()}
+
+
+def step_percentiles(w, hist):
+    return {k: percentile(hist[k], v) for k, v in step_values(w).items()}
 
 
 def percentile(sorted_vals, v):
@@ -266,7 +306,7 @@ def top_players(players, n=3):
     return fmt(players.nlargest(n, "diff")), fmt(players.nsmallest(n, "diff"))
 
 
-def expected_season(season, t, model, seed=11, game_mu=None, cv=None):
+def expected_season(season, t, model, seed=11, game_mu=None, cv=None, repl_by_mp=None):
     """Completed team-weeks of a season -> (week rows DataFrame, player-season DataFrame).
     game_mu: per-game pre-game projections (betting lines) where logged; {} = model only, with the
     detail lists (who missed games, moves, bench, every player) still produced."""
@@ -279,7 +319,8 @@ def expected_season(season, t, model, seed=11, game_mu=None, cv=None):
     for r in m.itertuples():
         c = caps.loc[r.mp]
         days = list(range(int(c.sp_start), int(c.sp_end) + 1))
-        res = week_breakdown(ctx, r.team_id, r.mp, days, int(c.cap), rng, game_mu=game_mu, cv=cv)
+        res = week_breakdown(ctx, r.team_id, r.mp, days, int(c.cap), rng, game_mu=game_mu, cv=cv,
+                             repl=(repl_by_mp or {}).get(int(r.mp)))
         if res is None:
             continue
         out, players = res

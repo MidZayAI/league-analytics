@@ -277,7 +277,7 @@
                   <img class="logo w-11 h-11" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" loading="lazy" @error="$el.src = avatarOf(s.team_id)">
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-1.5 min-w-0"><span class="font-bold text-[15.5px] truncate" :class="s.pts < (s === m.home ? m.away : m.home).pts && 'text-ink2'" x-text="s.name"></span><span class="you shrink-0" x-show="isMine(s.team_id)">YOU</span></div>
-                    <div class="text-[12px] text-muted" x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj ${fmt.n(s.proj)}`"></div>
+                    <div class="text-[12px] text-muted"><span x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj ${fmt.n(s.proj)}`"></span><span class="inline-flex items-center gap-1 rounded-md px-1.5 py-[1px] text-[12px] font-bold ml-1.5" x-show="luckVerdict(s.expected_so_far?.pct?.luck)" :style="luckVerdict(s.expected_so_far?.pct?.luck) ? `background: ${luckVerdict(s.expected_so_far.pct.luck).bg}; color: ${luckVerdict(s.expected_so_far.pct.luck).color}` : ''" :title="'Luck percentile this week'" x-text="luckVerdict(s.expected_so_far?.pct?.luck) ? `${luckVerdict(s.expected_so_far.pct.luck).word} ${luckVerdict(s.expected_so_far.pct.luck).n}` : ''"></span></div>
                   </div>
                   <div class="score-live" :class="s.pts < (s === m.home ? m.away : m.home).pts && 'text-ink2'" x-text="fmt.n(s.pts)"></div>
                 </div>
@@ -292,7 +292,7 @@
                   <div class="min-w-0">
                     <div class="flex items-center gap-1.5 min-w-0" :class="i === 1 && 'justify-end'"><span class="font-bold text-[17px] truncate" x-text="s.name"></span><span class="you shrink-0" x-show="isMine(s.team_id)">YOU</span></div>
                     <div class="score-xl my-1" :class="s.pts < (i ? m.home : m.away).pts && 'text-ink2'" x-text="fmt.n(s.pts)"></div>
-                    <div class="text-[12.5px] text-muted" x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj ${fmt.n(s.proj)}`"></div>
+                    <div class="text-[12.5px] text-muted"><span x-text="`${fmt.n(s.gp_used)}/${s.cap} games · proj ${fmt.n(s.proj)}`"></span><span class="inline-flex items-center gap-1 rounded-md px-1.5 py-[1px] text-[12px] font-bold ml-1.5" x-show="luckVerdict(s.expected_so_far?.pct?.luck)" :style="luckVerdict(s.expected_so_far?.pct?.luck) ? `background: ${luckVerdict(s.expected_so_far.pct.luck).bg}; color: ${luckVerdict(s.expected_so_far.pct.luck).color}` : ''" :title="'Luck percentile this week'" x-text="luckVerdict(s.expected_so_far?.pct?.luck) ? `${luckVerdict(s.expected_so_far.pct.luck).word} ${luckVerdict(s.expected_so_far.pct.luck).n}` : ''"></span></div>
                   </div>
                 </div>
               </template>
@@ -881,6 +881,7 @@
                 <div class="score-xl" :class="s.pts < (i ? h2hLive.home : h2hLive.away).pts && 'text-ink2'" x-text="fmt.n(s.pts)"></div>
                 <div class="text-[12.5px] text-muted">proj <b class="text-ink" x-text="fmt.n(s.proj)"></b> <span x-text="`(${fmt.n(s.p10)}–${fmt.n(s.p90)})`"></span></div>
                 <div class="text-[12.5px] text-muted"><b class="text-ink" x-text="`${fmt.n(s.gp_used)}/${s.cap}`"></b> games · <b class="text-ink" x-text="s.rem_cap"></b> left</div>
+                <div><span class="inline-flex items-center gap-1 rounded-md px-1.5 py-[1px] text-[12px] font-bold" x-show="luckVerdict(s.expected_so_far?.pct?.luck)" :style="luckVerdict(s.expected_so_far?.pct?.luck) ? `background: ${luckVerdict(s.expected_so_far.pct.luck).bg}; color: ${luckVerdict(s.expected_so_far.pct.luck).color}` : ''" :title="'Luck percentile this week'" x-text="luckVerdict(s.expected_so_far?.pct?.luck) ? `${luckVerdict(s.expected_so_far.pct.luck).word} ${luckVerdict(s.expected_so_far.pct.luck).n}` : ''"></span></div>
               </div>
             </template>
             <div class="order-2 flex flex-col items-center pt-16 text-muted font-bold text-[13px]">vs</div>
@@ -911,22 +912,27 @@
         <div class="grid md:grid-cols-2 gap-4">
           <template x-for="s in [h2hLive.home, h2hLive.away]" :key="s.team_id">
             <div class="contents">
-            <template x-for="bd in (s.expected_so_far ? [s.expected_so_far] : [])" :key="'bd-' + s.team_id">
+            <template x-for="bd in (s.expected_so_far?.games_used || s.expected_so_far?.in_progress ? [s.expected_so_far] : [])" :key="'bd-' + s.team_id">
             <div class="card space-y-3" x-data="{ all: false }">
               <div class="flex items-center gap-2.5 min-w-0">
                 <img class="logo w-8 h-8" :src="logoOf(s.team_id)" :style="`--ring: ${teamColor(s.team_id)}`" alt="" @error="$el.src = avatarOf(s.team_id)">
                 <h3 class="truncate flex-1" x-text="s.name"></h3>
                 <span class="info-wrap shrink-0" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.sofar"></span></span>
               </div>
-              <div class="flex items-end justify-between gap-3">
-                <div>
-                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+              <div class="flex items-stretch justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(sfExpected(bd))"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b>
+                    <b class="ml-1" :class="sfScored(bd) - sfExpected(bd) >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - sfExpected(bd), 0)"></b></div>
                   <div class="text-[12px] text-muted" x-text="`${bd.days_done} days done · ` + sfSource(bd)"></div>
+                  <div class="text-[12px] text-muted" x-show="bd.open_games" x-text="`${bd.open_games} cap game${bd.open_games > 1 ? 's' : ''} still open`"></div>
                 </div>
-                <div class="text-right shrink-0">
-                  <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
-                  <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
-                </div>
+                <template x-if="luckVerdict(bd.pct?.luck)">
+                  <div class="shrink-0 rounded-xl px-3 py-2 text-center min-w-[92px]" :style="`background: ${luckVerdict(bd.pct.luck).bg}`">
+                    <div class="text-[30px] font-extrabold leading-none" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).n"></div>
+                    <div class="text-[12px] font-bold mt-0.5" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).word"></div>
+                    <div class="text-[11px] text-muted">luck pct</div>
+                  </div>
+                </template>
               </div>
               <div class="chart h-48" x-chart="sfChart(bd)"></div>
               <div>
@@ -1143,6 +1149,7 @@
                 <div class="stat" x-show="pregameP(season, s.mp, s.team_id) != null">pregame <b x-text="fmt.pct(pregameP(season, s.mp, s.team_id), 0)"></b></div>
                 <div class="stat" x-show="s.e4 != null">at season level <b x-text="fmt.n(s.e4)"></b></div>
                 <div class="stat"><b x-text="`${fmt.n(s.gp)}/${s.cap}`"></b> games · coaching <b x-text="fmt.pct(s.efficiency, 0)"></b></div>
+                <div><span class="inline-flex items-center gap-1 rounded-md px-1.5 py-[1px] text-[12px] font-bold" x-show="luckVerdict(s.pct?.luck)" :style="luckVerdict(s.pct?.luck) ? `background: ${luckVerdict(s.pct.luck).bg}; color: ${luckVerdict(s.pct.luck).color}` : ''" :title="'Luck percentile that week'" x-text="luckVerdict(s.pct?.luck) ? `${luckVerdict(s.pct.luck).word} ${luckVerdict(s.pct.luck).n}` : ''"></span></div>
               </div>
             </template>
           </div>
@@ -1178,15 +1185,20 @@
                   <h3 class="truncate flex-1" x-text="tname(s.team_id)"></h3>
                   <span class="info-wrap shrink-0" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.sofar"></span></span>
                 </div>
-                <div class="flex items-end justify-between gap-3">
-                  <div>
-                    <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+                <div class="flex items-stretch justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(sfExpected(bd))"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b>
+                      <b class="ml-1" :class="sfScored(bd) - sfExpected(bd) >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - sfExpected(bd), 0)"></b></div>
                     <div class="text-[12px] text-muted" x-text="sfSource(bd)"></div>
+                    <div class="text-[12px] text-muted" x-show="bd.open_games" x-text="`${bd.open_games} cap game${bd.open_games > 1 ? 's' : ''} still open`"></div>
                   </div>
-                  <div class="text-right shrink-0">
-                    <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
-                    <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
-                  </div>
+                  <template x-if="luckVerdict(bd.pct?.luck)">
+                    <div class="shrink-0 rounded-xl px-3 py-2 text-center min-w-[92px]" :style="`background: ${luckVerdict(bd.pct.luck).bg}`">
+                      <div class="text-[30px] font-extrabold leading-none" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).n"></div>
+                      <div class="text-[12px] font-bold mt-0.5" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).word"></div>
+                      <div class="text-[11px] text-muted">luck pct</div>
+                    </div>
+                  </template>
                 </div>
                 <div class="chart h-48" x-chart="sfChart(bd)"></div>
                 <div>
@@ -1793,15 +1805,20 @@
                 <h3 class="truncate flex-1" x-text="'Season, step by step'"></h3>
                 <span class="info-wrap shrink-0" x-data="{ o: false }"><button class="info" @click.stop="o = !o" @click.outside="o = false" aria-label="About the breakdown">i</button><span class="pop !left-auto !right-0 !translate-x-0" x-show="o" x-text="glossary.sofar"></span></span>
               </div>
-              <div class="flex items-end justify-between gap-3">
-                <div>
-                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(bd.e0)"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b></div>
+              <div class="flex items-stretch justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-[13px] text-ink2">Expected <b class="text-ink" x-text="fmt.n(sfExpected(bd))"></b> → scored <b class="text-ink" x-text="fmt.n(sfScored(bd))"></b>
+                    <b class="ml-1" :class="sfScored(bd) - sfExpected(bd) >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - sfExpected(bd), 0)"></b></div>
                   <div class="text-[12px] text-muted" x-text="`${bd.weeks} weeks · ` + sfSource(bd, 'season')"></div>
+                  <div class="text-[12px] text-muted" x-show="bd.open_games" x-text="`${bd.open_games} cap game${bd.open_games > 1 ? 's' : ''} still open`"></div>
                 </div>
-                <div class="text-right shrink-0">
-                  <div class="text-[22px] font-extrabold leading-none" :class="sfScored(bd) - bd.e0 >= 0 ? 'up' : 'down'" x-text="fmt.signed(sfScored(bd) - bd.e0, 0)"></div>
-                  <div class="text-[12px] text-muted mt-0.5" x-show="bd.pct?.luck != null" x-text="`luck: ${Math.round((bd.pct?.luck || 0) * 100)}th pct`"></div>
-                </div>
+                <template x-if="luckVerdict(bd.pct?.luck)">
+                  <div class="shrink-0 rounded-xl px-3 py-2 text-center min-w-[92px]" :style="`background: ${luckVerdict(bd.pct.luck).bg}`">
+                    <div class="text-[30px] font-extrabold leading-none" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).n"></div>
+                    <div class="text-[12px] font-bold mt-0.5" :style="`color: ${luckVerdict(bd.pct.luck).color}`" x-text="luckVerdict(bd.pct.luck).word"></div>
+                    <div class="text-[11px] text-muted">luck pct</div>
+                  </div>
+                </template>
               </div>
               <div class="chart h-48" x-chart="sfChart(bd)"></div>
               <div>
@@ -3051,12 +3068,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="js/charts.js?v=fa72ac853e"></script>
-<script src="js/core.js?v=839d2344df"></script>
+<script src="js/core.js?v=3eb99b01cf"></script>
 <script src="js/legacy.js?v=edcef3148f"></script>
-<script src="js/matchups.js?v=23d903c700"></script>
+<script src="js/matchups.js?v=e2c07245f3"></script>
 <script src="js/teams.js?v=2d70216709"></script>
 <script src="js/league.js?v=6a0a3b75f0"></script>
-<script src="js/history.js?v=9f29adadf5"></script>
+<script src="js/history.js?v=d92ed067ab"></script>
 <script src="js/odds.js?v=e59d209d77"></script>
 <script src="js/injuries.js?v=2adf4039ca"></script>
 <script src="js/waivers.js?v=d59837df2f"></script>

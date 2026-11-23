@@ -340,6 +340,15 @@ def main():
         if f_.exists():
             hist_weeks += [w for w in json.loads(f_.read_text(encoding="utf-8")).get("weeks", []) if w.get("result") and not w.get("playoff")]
     step_hist = expected.step_history(hist_weeks)
+    try:  # replacement-level FP/g this week (best free agents), for pickups and unused cap games
+        import draft as draft_mod
+        sp_all = sorted(int(x) for x in t["calendar"].sp)
+        wrepl, _ = draft_mod.weekly_replacement(CURRENT, t["caps"], dates, sp_all[0], min(sp_now, sp_all[-1]),
+                                                len(t["teams"]) * 13, model.repl)
+        repl_now = wrepl.get(int(mp), model.repl)
+    except Exception as e:
+        print(f"live: replacement level skipped ({e})")
+        repl_now = model.repl
     done_days = [sp for sp in week if sp < sp_now]
     games_now = nba_game_status(dates[sp_now])  # today's NBA games: not started / in progress / final
 
@@ -466,7 +475,8 @@ def main():
             # finished days + today's games that are already final (in-progress games stay out)
             final_today = {pro for pro, g in games_now.items() if g["state"] == "post"}
             res = expected.week_breakdown(exp_ctx, tid, int(mp), week, int(cap_row.cap), rng,
-                                          done_days + [sp_now], (sp_now, final_today), game_mu=game_mu, cv=model.cv)
+                                          done_days + [sp_now], (sp_now, final_today), game_mu=game_mu, cv=model.cv,
+                                          repl=repl_now, final=False)
             so_far = None
             if res:
                 so_far, players = res
@@ -477,10 +487,9 @@ def main():
                 so_far["in_progress"] = round(float(cur) - so_far["actual"], 1)
                 so_far["live_games"] = sum(1 for g in team_out[tid]["grid"] for d in g["days"] if d.get("sp") == sp_now and d.get("state") == "live")
                 # where this week sits among every finished team-week on record (per counted game)
-                gp_ = max(so_far["games_used"], 1)
-                so_far["pct"] = {k: expected.percentile(step_hist[k], so_far[k] / gp_) for k in ("availability", "moves", "lineup")}
-                so_far["pct"]["perf"] = so_far.get("pct_perf")
-                so_far["pct"]["luck"] = expected.percentile(step_hist["luck"], (so_far["availability"] + so_far["breakouts"] + so_far["hot_cold"]) / gp_)
+                # no counted games yet (start of the week): nothing to rank
+                so_far["pct"] = expected.step_percentiles({**so_far, "gp": so_far["games_used"]}, step_hist) if so_far["games_used"] else {}
+                so_far["open_games"] = rem_cap
             sides.append({"team_id": tid, "name": names.get(tid), "pts": cur, "gp_used": gp_used,
                           "cap": int(cap_row.cap), "rem_cap": rem_cap,
                           "avail_games": float(cands.p.sum()), "exp_games": float(games.mean()),

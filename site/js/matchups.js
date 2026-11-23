@@ -112,26 +112,45 @@ window.Matchups = {
   sfSteps(e) {
     if (!e) return [];
     const L = (x) => this.sfShort(x.name);
-    const perf = (e.players || []).filter((p) => p.games).map((p) => ({ ...p, d: p.pts - p.proj }));
+    const R = e.repl ? fmt.n(e.repl, 1) : 'replacement';
+    const picks = new Set((e.added || []).map((a) => a.id));
+    const perf = (e.players || []).filter((p) => p.games && !picks.has(p.id)).map((p) => ({ ...p, d: p.pts - p.proj }));
     const over = perf.slice().sort((a, b) => b.d - a.d).filter((p) => p.d > 4).slice(0, 2);
     const under = perf.slice().sort((a, b) => a.d - b.d).filter((p) => p.d < -4).slice(0, 2);
+    const v2 = e.pickups != null;
     const steps = [
-      { key: 'availability', label: 'Who played', info: 'Injuries and rest: week-start players sitting out (or playing more than expected) in games their NBA team played.',
-        val: e.availability, pct: e.pct?.availability, kind: 'luck',
+      { key: 'who', label: 'Who played', info: 'Injuries and rest: week-start players sitting out (or playing more than expected) in games their NBA team played.',
+        val: e.availability, pct: e.pct?.who ?? e.pct?.availability, kind: 'luck',
         why: (e.missed || []).slice(0, 3).map((m) => `${L(m)} out ${m.games} (${fmt.signed(-m.lost, 0)})`).join(' · ') || 'Everyone expected to play did' },
-      { key: 'moves', label: 'Roster moves', info: 'Pickups and drops this week: games added by new players minus games lost by players let go.',
-        val: e.moves, pct: (e.added || []).length || (e.dropped || []).length ? e.pct?.moves : null, kind: 'skill',
-        why: [...(e.added || []).map((a) => `Added ${L(a)}: ${a.games} g, ${fmt.n(a.pts)} pts counted`), ...(e.dropped || []).map((d) => `Dropped ${L(d)} (${d.games} g left)`)].join(' · ') || 'No moves' },
-      { key: 'lineup', label: 'Lineup & cap', info: 'Which games counted vs the best use of the games cap with what was known each morning.',
-        val: e.lineup, pct: e.pct?.lineup, kind: 'skill',
+      v2 ? { key: 'pickups', label: 'Pickups', info: `Players added this week, judged against a replacement-level free agent (${R} FP per game that week): points in the games that counted minus what that free agent would have scored.`,
+        val: e.pickups, pct: (e.added || []).some((a) => a.counted) ? e.pct?.pickups : null, kind: 'skill',
+        why: (e.added || []).map((a) => (a.counted ? `${L(a)} ${a.counted} g, ${fmt.n(a.pts)} pts (${fmt.signed(a.vs_repl, 0)} vs replacement)` : `${L(a)} ${a.games} g, none counted`)).join(' · ') || 'No pickups' }
+        : { key: 'moves', label: 'Roster moves', info: 'Pickups and drops this week.', val: e.moves, pct: null, kind: 'skill',
+            why: (e.added || []).map((a) => `Added ${L(a)}`).join(' · ') || 'No moves' },
+      { key: 'lineup', label: 'Lineup & cap', info: 'Which games counted vs what the roster was expected to give: benching better players, or counting worse ones.',
+        val: v2 ? e.lineup2 : e.lineup, pct: e.pct?.lineup, kind: 'skill',
         why: (e.benched || []).slice(0, 3).map((b) => `Benched ${L(b)} ${b.games}× (${fmt.n(b.pts)} pts)`).join(' · ') || 'Nobody useful left on the bench' },
-      { key: 'perf', label: 'vs projection', info: "Points in the games that counted vs each game's pre-game projection (betting line + Sleeper + our model).",
-        val: (e.breakouts || 0) + (e.hot_cold || 0), pct: e.pct?.perf, kind: 'luck',
-        why: [...over.map((p) => `${L(p)} ${fmt.signed(p.d, 0)}`), ...under.map((p) => `${L(p)} ${fmt.signed(p.d, 0)}`)].join(' · ') || 'Right on projection' },
     ];
+    if (v2 && e.unused_games) {
+      steps.push({ key: 'unused', label: 'Unused games', info: 'Cap games left empty. Each one costs what a replacement-level free agent would have scored (any free agent with a game could have filled it).',
+        val: e.unused, pct: e.pct?.unused, kind: 'skill',
+        why: `${e.unused_games} of ${e.cap || e.games_used + e.unused_games} cap games unused × ${R} replacement = ${fmt.signed(e.unused, 0)}` });
+    }
+    steps.push({ key: 'perf', label: 'vs projection', info: "Points in the games that counted (pickups excluded) vs each game's pre-game projection.",
+      val: v2 ? e.perf2 : (e.breakouts || 0) + (e.hot_cold || 0), pct: e.pct?.perf, kind: 'luck',
+      why: [...over.map((p) => `${L(p)} ${fmt.signed(p.d, 0)}`), ...under.map((p) => `${L(p)} ${fmt.signed(p.d, 0)}`)].join(' · ') || 'Right on projection' });
     if (e.in_progress) steps.push({ key: 'tonight', label: 'Still playing', info: 'Points from games in progress right now; they move into the steps above when final.',
       val: e.in_progress, pct: null, kind: 'live', why: e.live_games ? `${e.live_games} game${e.live_games > 1 ? 's' : ''} live` : 'Not final yet' });
     return steps;
+  },
+  sfExpected(e) { return e ? (e.e0x ?? e.e0) : null; },
+  // the week in one word, from the luck percentile
+  luckVerdict(p) {
+    if (p == null) return null;
+    const n = Math.round(p * 100);
+    const word = p < 0.15 ? 'Very unlucky' : p < 0.4 ? 'Unlucky' : p <= 0.6 ? 'Average luck' : p <= 0.85 ? 'Lucky' : 'Very lucky';
+    const c = p < 0.4 ? '--bad' : p > 0.6 ? '--good' : '--ink2';
+    return { n, word, color: `var(${c})`, bg: `color-mix(in srgb, var(${c}) ${p < 0.15 || p > 0.85 ? 26 : p < 0.4 || p > 0.6 ? 16 : 8}%, var(--wash))` };
   },
   sfPctText(st, unit = 'weeks') {
     if (st.pct == null) return '';
@@ -151,8 +170,8 @@ window.Matchups = {
     const steps = this.sfSteps(e);
     const cats = ['Expected', ...steps.map((x) => x.label), 'Scored'];
     const lift = [], up = [], down = [], ends = [];
-    let run = e.e0;
-    lift.push(0); up.push(null); down.push(null); ends.push(e.e0);
+    let run = this.sfExpected(e);
+    lift.push(0); up.push(null); down.push(null); ends.push(run);
     steps.forEach((x) => {
       const next = run + x.val;
       lift.push(Math.min(run, next)); ends.push(null);
@@ -160,14 +179,14 @@ window.Matchups = {
       run = next;
     });
     lift.push(0); up.push(null); down.push(null); ends.push(this.sfScored(e));
-    const vals = [e.e0, this.sfScored(e), ...lift.filter((v) => v > 0)];
+    const vals = [this.sfExpected(e), this.sfScored(e), ...lift.filter((v) => v > 0)];
     const lo = Math.floor(Math.min(...vals) * 0.96 / 50) * 50;
     const hidden = { color: 'transparent' };
     return { option: {
       ...base(), grid: { ...base().grid, top: 4, right: 44, left: 4, bottom: 0 },
       tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (ps) => {
         const i = ps[0].dataIndex;
-        if (i === 0) return `<b>Expected</b>` + tipRow('Points', fmt.n(e.e0));
+        if (i === 0) return `<b>Expected</b>` + tipRow('Points', fmt.n(this.sfExpected(e)));
         if (i === cats.length - 1) return `<b>Scored</b>` + tipRow('Points', fmt.n(this.sfScored(e)));
         const x = steps[i - 1];
         return `<b>${x.label}</b>` + tipRow('Points', fmt.signed(x.val, 0)) + (x.pct != null ? tipRow('Percentile', Math.round(x.pct * 100)) : ''); } },
