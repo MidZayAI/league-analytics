@@ -25,11 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -37,7 +37,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       # past seasons' tidy tables + coaching solves don't change; keep them between runs
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: data/tidy
           key: tidy-${{ hashFiles('pipeline/normalize.py', 'pipeline/coaching.py', 'pipeline/expected.py', 'pipeline/projections.py', 'pipeline/simulate.py', 'pipeline/season_sim.py', 'pipeline/injuries.py', 'pipeline/usage.py', 'pipeline/model_params.json', 'requirements.txt') }}-${{ github.run_id }}
@@ -63,9 +63,17 @@ jobs:
             sleep 5
           done
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+      # GitHub sometimes can't see a just-uploaded artifact for a few seconds ("No artifacts named
+      # github-pages"): try again after a short wait instead of failing the whole refresh
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+      - id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v5
